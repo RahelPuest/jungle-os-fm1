@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JUNGLE OS: Live performance with both instruments</title>
+<meta name="description" content="Live performance with both instruments for JUNGLE OS, a firmware for the M-VAVE FM-1.">
+<style>
+/* paper and ink: warm white paper, ink-blue type, vermilion for what is played, mustard for asides; a shade of the
+   paper for code and callouts (CTL-1's; a firmware may restyle its site) */
+:root {
+  --paper: #fbf8f1; --sheet: #efe9dc; --rule: #ddd4c2; --ink: #1e2b5a; --muted: #5d6585;
+  --hot: #e5482e; --hot-t: #f8d3c9; --cool: #d9a21b; --cool-t: #f5e4b8;
+  --hot-ink: #c23a22;                                 /* the vermilion as text: 4.5:1 on the paper */
+  color-scheme: light;
+}
+body {
+  background: var(--paper); color: var(--ink); margin: 0;
+  font: 400 17px/1.6 "Helvetica Neue", Helvetica, Arial, sans-serif;
+  padding-inline: 16px; padding-block: 32px 64px;
+}
+main { max-width: 46rem; margin: 0 auto; }
+.page > .site { max-width: 46rem; margin-inline: auto; }
+main:focus { outline: none; }
+h1, h2, h3 { font-family: inherit; text-wrap: balance; line-height: 1.2; }
+h1 { font-size: 2.2rem; font-weight: 700; margin: 0 0 .4rem; letter-spacing: .02em; }
+h2 { font-size: 1.3rem; font-weight: 700; margin: 3rem 0 .8rem; padding-top: .8rem; border-top: 2px solid var(--ink); }
+h2 .num { color: var(--hot); margin-right: .5em; font-variant-numeric: tabular-nums; }
+h3 { font-size: 1.1rem; font-weight: 700; margin: 2rem 0 .5rem; }
+p, li { max-width: 65ch; }
+p { margin: 0 0 1rem; }
+ul, ol { padding-left: 1.3rem; margin: 0 0 1rem; }
+li { margin: .2rem 0; }
+li::marker { color: var(--hot); }
+strong { font-weight: 700; }
+a { color: var(--ink); text-decoration-color: var(--hot); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a:hover { background: var(--hot-t); }
+:focus-visible { outline: 3px solid var(--hot-ink); outline-offset: 2px; }
+.skip { position: absolute; left: 16px; top: -100px; background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 0 0 6px 6px; z-index: 1; }
+.skip:focus { top: 0; }
+code, pre { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .86em; }
+code { background: var(--sheet); padding: .08em .35em; border-radius: 3px; }
+pre { background: var(--sheet); border-radius: 6px; padding: 14px 16px; overflow-x: auto; line-height: 1.45; margin: 0 0 1.2rem; }
+pre code { background: none; padding: 0; font-size: inherit; }
+hr { display: none; }
+.table { overflow-x: auto; margin: 0 0 1.3rem; }
+table { border-collapse: collapse; width: 100%; font-size: .95rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: .45rem .7rem .45rem 0; border-bottom: 1px solid var(--rule); }
+th { font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: .78rem; color: var(--muted); border-bottom: 2px solid var(--ink); }
+td:first-child { white-space: nowrap; }
+.lede { margin-bottom: 1.6rem; }
+.status { background: var(--sheet); border-radius: 6px; padding: 12px 16px; }
+.status p { margin: 0; }
+.site { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem 1.2rem; margin: 0 0 1.6rem; padding-bottom: .5rem; border-bottom: 2px solid var(--ink); }
+.site .home { font-size: 1.1rem; font-weight: 700; letter-spacing: .04em; color: var(--ink); text-decoration: none; }
+.site .home:hover { color: var(--hot-ink); background: none; }
+.site nav { margin-left: auto; display: flex; flex-wrap: wrap; gap: .2rem 1rem; font-size: .92rem; }
+.site nav a { color: var(--ink); text-underline-offset: 3px; }
+.site nav a[aria-current] { text-decoration: none; color: var(--hot-ink); }
+a.home { color: inherit; text-decoration: none; }
+a.home:hover { background: none; color: var(--hot-ink); }
+main > a.home { display: inline-block; font-size: .9rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+.callout { border-left: 4px solid var(--cool); background: var(--cool-t); padding: 10px 16px; margin: 0 0 1.2rem; max-width: 65ch; border-radius: 0 6px 6px 0; }
+.callout p { margin: 0; }
+details { background: var(--sheet); border-radius: 6px; padding: 0 16px; margin: 0 0 1.2rem; }
+details > summary { cursor: pointer; padding: 10px 0; }
+details[open] > summary { margin-bottom: .4rem; }
+details > :last-child { margin-bottom: 1rem; }
+.swatch { display: inline-block; width: .7em; height: .7em; margin-right: .4em; vertical-align: .02em; }
+nav.contents ol { columns: 2 14rem; column-gap: 2rem; padding-left: 1.3rem; }
+.figs { display: flex; flex-wrap: wrap; gap: 20px; margin: .4rem 0 1.6rem; }
+figure { margin: 0; flex: 0 1 auto; }
+figure img { display: block; max-width: 100%; height: auto; }
+figure.shot img { width: 300px; image-rendering: pixelated; border-radius: 4px; box-shadow: 0 0 0 1px var(--rule); }
+figure.wide { flex-basis: 100%; }
+figure.wide img { width: 100%; }
+figcaption { color: var(--muted); font-size: .88rem; margin-top: .4rem; max-width: 300px; }
+figure.wide figcaption { max-width: none; }
+nav.contents li { break-inside: avoid; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="page">
+<main id="content" tabindex="-1">
+<a class="home" href="../">JUNGLE OS</a>
+<h1>Live performance with both instruments</h1>
+<p>Break Surgeon (A) on one mixer channel, Abyss Engine (B) on another. The mixer's model is not confirmed: nothing here assumes it has MIDI, effects, sends or a particular routing. Each FM-1's output is stereo (headphone jack); A's signal is mono-compatible by design (the drum bus is mono), B's sub and bass are centred.</p>
+<h2 id="before-the-set">Before the set</h2>
+<ol><li>Link (optional): see docs/architecture/link-protocol.md for the routes; set the same LINK CH on both. On A: SYSTEM K4 SYNC OUT = ON, CLOCK = INT. On B: FOLLOW = LINK. Without a link: same BPM on both, PLAY together, SOLO DUCK on B.</li><li>Gain: MASTER on both at about 3/4. A's ceiling is −0.5 dBFS with typical peaks around −2.5 dBFS (renders: peak 0.75 at MASTER-equivalent 0.9); B peaks similar with more RMS (bass). Set the mixer channels so B's sub sits under A's kick, not on top: start with B's channel ~3 dB below A's and adjust by ear on the actual PA.</li><li>Low end: B's sub lives at 36–72 Hz, mono. If the PA has a crossover, check the sub on it before the set (docs/development/testing.md, listening checklist).</li><li>Save both (stopped).</li></ol>
+<h2 id="a-20-minute-improvisation-one-route-through-it">A 20-minute improvisation (one route through it)</h2>
+<div class="table" tabindex="0" role="region" aria-label="Table: A 20-minute improvisation (one route through it) (Time, Break Surgeon, Abyss Engine, Mixer)"><table><thead><tr><th>Time</th><th>Break Surgeon</th><th>Abyss Engine</th><th>Mixer</th></tr></thead><tbody><tr><td>0:00</td><td>stopped</td><td>scene INTRO (pad only), PAD HOLD, MORPH low, SPACE high; play pad chords on the keys (ENV → PAD)</td><td>B up, A down</td></tr><tr><td>1:30</td><td>PLAY with scene INTRO (thinned break, no synth kick/snare)</td><td>keep the pad; slowly raise DARKNESS / EVOLVE</td><td>bring A in</td></tr><tr><td>3:00</td><td>scene BUILD (rolling, more hats), K4 ENERGY up</td><td>scene BUILD: a sparse bass enters</td><td></td></tr><tr><td>4:30</td><td>FILL 2 bars (black 9) into...</td><td></td><td></td></tr><tr><td>5:00</td><td>scene DROP (kick + snare + full break)</td><td>scene DROP (bass line, sub, pad released)</td><td>both full</td></tr><tr><td>7:00</td><td>BREAK knob toward CHOPPED; hold CHOP / REVERSE for single bars</td><td>MORPH through TALK → GROWL; MOTION up</td><td></td></tr><tr><td>9:00</td><td>MUTATE (LFO), keep it or SEL+LFO to undo</td><td>MUTATE (LFO) on the bass; SNAP (PRESET) back to a node</td><td></td></tr><tr><td>10:30</td><td>scene VOID (break fragments, drums muted)</td><td>scene VOID (pad, no bass), SPACE up</td><td>A down a little</td></tr><tr><td>12:00</td><td>FREEZE (white 7) held over the last beat, release on the one</td><td>stab chords on the keys (ENV → STAB)</td><td></td></tr><tr><td>12:30</td><td>scene IMPACT (half-time, INDUSTRIAL kit)</td><td>scene IMPACT (stabs, aggressive bass)</td><td></td></tr><tr><td>14:00</td><td>FILL 4 bars (black 10), then scene MUTATION</td><td>scene MUTATION (BITE high)</td><td></td></tr><tr><td>16:00</td><td>KIT knob toward METAL TECHSTEP; PRESSURE up</td><td>EXPLORE (ALGO) to REESE DARK</td><td></td></tr><tr><td>18:00</td><td>REC (RETURN) on a bar: the clean groove</td><td>SNAP to HOLLOW, BITE down</td><td></td></tr><tr><td>19:00</td><td>mute KICK and SNARE (white 10, 11), leave the break</td><td>PAD HOLD on, bass muted (SEQUENCE black 11)</td><td></td></tr><tr><td>20:00</td><td>STOP on a downbeat</td><td>the pad's tail rings out (PAD HOLD off)</td><td>fade</td></tr></tbody></table></div>
+<p>With the link, a scene pressed on A goes to B as well (same number, same bar). Scenes stored on each device should correspond (scene 3 = DROP on both).</p>
+<h2 id="transitions-that-work">Transitions that work</h2>
+<ul><li><strong>On the bar, every time</strong>: scenes and pattern changes are quantized (SCENE K1); press anywhere in the bar before.</li><li><strong>Fill into a scene</strong>: FILL first, the scene on the same bar: the fill ends with an IMPACT hit on the downbeat.</li><li><strong>Safe exit</strong>: REC (RETURN) brings A back to the stable groove at the next bar; SNAP brings B to a curated node.</li><li><strong>Panic</strong>: SEL + PLAY on either device stops and silences it.</li></ul>
+<h2 id="gain-staging-inside-the-instruments">Gain staging inside the instruments</h2>
+<ul><li>A: PRESSURE adds density, not level (it trims as it pushes). Watch the FX page's peak meter: red is the ceiling.</li><li>B: BITE and DIRT are trimmed; WEIGHT changes only the sub. The guard catches show on the FX page: occasional is fine, constant means MASTER or PRESSURE is too high.</li></ul>
+<h2 id="hardware-checks-still-pending">Hardware checks still pending</h2>
+<p>Everything above is designed and runs in the simulators. Before relying on it live: the FM-1 tests in docs/development/testing.md (§ hardware), especially CPU load with everything playing, saving, and the link.</p>
+</main>
+</div>
+</body>
+</html>

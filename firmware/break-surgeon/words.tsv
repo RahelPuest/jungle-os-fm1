@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MPL-2.0
+# Break Surgeon's words for a screen reader (fm1-reader): the text on the screen <TAB> what to say.
+# url: https://rahelpuest.github.io/jungle-os-fm1/break-surgeon/words/
+BREAK SURGEON	break surgeon
+BRK LOCK	break lock
+RATCH	ratchet
+MICRO	micro timing
+P1	pattern 1
+P2	pattern 2
+P3	pattern 3
+P4	pattern 4

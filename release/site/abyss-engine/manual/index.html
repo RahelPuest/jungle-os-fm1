@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ABYSS ENGINE: The ABYSS ENGINE manual</title>
+<meta name="description" content="The ABYSS ENGINE manual for ABYSS ENGINE, a firmware for the M-VAVE FM-1.">
+<style>
+/* paper and ink: warm white paper, ink-blue type, vermilion for what is played, mustard for asides; a shade of the
+   paper for code and callouts (CTL-1's; a firmware may restyle its site) */
+:root {
+  --paper: #fbf8f1; --sheet: #efe9dc; --rule: #ddd4c2; --ink: #1e2b5a; --muted: #5d6585;
+  --hot: #e5482e; --hot-t: #f8d3c9; --cool: #d9a21b; --cool-t: #f5e4b8;
+  --hot-ink: #c23a22;                                 /* the vermilion as text: 4.5:1 on the paper */
+  color-scheme: light;
+}
+body {
+  background: var(--paper); color: var(--ink); margin: 0;
+  font: 400 17px/1.6 "Helvetica Neue", Helvetica, Arial, sans-serif;
+  padding-inline: 16px; padding-block: 32px 64px;
+}
+main { max-width: 46rem; margin: 0 auto; }
+.page > .site { max-width: 46rem; margin-inline: auto; }
+main:focus { outline: none; }
+h1, h2, h3 { font-family: inherit; text-wrap: balance; line-height: 1.2; }
+h1 { font-size: 2.2rem; font-weight: 700; margin: 0 0 .4rem; letter-spacing: .02em; }
+h2 { font-size: 1.3rem; font-weight: 700; margin: 3rem 0 .8rem; padding-top: .8rem; border-top: 2px solid var(--ink); }
+h2 .num { color: var(--hot); margin-right: .5em; font-variant-numeric: tabular-nums; }
+h3 { font-size: 1.1rem; font-weight: 700; margin: 2rem 0 .5rem; }
+p, li { max-width: 65ch; }
+p { margin: 0 0 1rem; }
+ul, ol { padding-left: 1.3rem; margin: 0 0 1rem; }
+li { margin: .2rem 0; }
+li::marker { color: var(--hot); }
+strong { font-weight: 700; }
+a { color: var(--ink); text-decoration-color: var(--hot); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a:hover { background: var(--hot-t); }
+:focus-visible { outline: 3px solid var(--hot-ink); outline-offset: 2px; }
+.skip { position: absolute; left: 16px; top: -100px; background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 0 0 6px 6px; z-index: 1; }
+.skip:focus { top: 0; }
+code, pre { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .86em; }
+code { background: var(--sheet); padding: .08em .35em; border-radius: 3px; }
+pre { background: var(--sheet); border-radius: 6px; padding: 14px 16px; overflow-x: auto; line-height: 1.45; margin: 0 0 1.2rem; }
+pre code { background: none; padding: 0; font-size: inherit; }
+hr { display: none; }
+.table { overflow-x: auto; margin: 0 0 1.3rem; }
+table { border-collapse: collapse; width: 100%; font-size: .95rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: .45rem .7rem .45rem 0; border-bottom: 1px solid var(--rule); }
+th { font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: .78rem; color: var(--muted); border-bottom: 2px solid var(--ink); }
+td:first-child { white-space: nowrap; }
+.lede { margin-bottom: 1.6rem; }
+.status { background: var(--sheet); border-radius: 6px; padding: 12px 16px; }
+.status p { margin: 0; }
+.site { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem 1.2rem; margin: 0 0 1.6rem; padding-bottom: .5rem; border-bottom: 2px solid var(--ink); }
+.site .home { font-size: 1.1rem; font-weight: 700; letter-spacing: .04em; color: var(--ink); text-decoration: none; }
+.site .home:hover { color: var(--hot-ink); background: none; }
+.site nav { margin-left: auto; display: flex; flex-wrap: wrap; gap: .2rem 1rem; font-size: .92rem; }
+.site nav a { color: var(--ink); text-underline-offset: 3px; }
+.site nav a[aria-current] { text-decoration: none; color: var(--hot-ink); }
+a.home { color: inherit; text-decoration: none; }
+a.home:hover { background: none; color: var(--hot-ink); }
+main > a.home { display: inline-block; font-size: .9rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 .4rem; }
+.callout { border-left: 4px solid var(--cool); background: var(--cool-t); padding: 10px 16px; margin: 0 0 1.2rem; max-width: 65ch; border-radius: 0 6px 6px 0; }
+.callout p { margin: 0; }
+details { background: var(--sheet); border-radius: 6px; padding: 0 16px; margin: 0 0 1.2rem; }
+details > summary { cursor: pointer; padding: 10px 0; }
+details[open] > summary { margin-bottom: .4rem; }
+details > :last-child { margin-bottom: 1rem; }
+.swatch { display: inline-block; width: .7em; height: .7em; margin-right: .4em; vertical-align: .02em; }
+nav.contents ol { columns: 2 14rem; column-gap: 2rem; padding-left: 1.3rem; }
+.figs { display: flex; flex-wrap: wrap; gap: 20px; margin: .4rem 0 1.6rem; }
+figure { margin: 0; flex: 0 1 auto; }
+figure img { display: block; max-width: 100%; height: auto; }
+figure.shot img { width: 300px; image-rendering: pixelated; border-radius: 4px; box-shadow: 0 0 0 1px var(--rule); }
+figure.wide { flex-basis: 100%; }
+figure.wide img { width: 100%; }
+figcaption { color: var(--muted); font-size: .88rem; margin-top: .4rem; max-width: 300px; }
+figure.wide figcaption { max-width: none; }
+nav.contents li { break-inside: avoid; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="page">
+<main id="content" tabindex="-1">
+<a class="home" href="../">ABYSS ENGINE</a>
+<h1>The ABYSS ENGINE manual</h1>
+<p>Neuro bass (FM CREATURE, REESE MATRIX) navigated through a curated sweetspot graph, a separate clean sub, stabs, an evolving pad, a harmonic sequencer on a shared key, ducking from Break Surgeon's kicks, and a bass-safe master. Status: runs in the simulators; <strong>not yet tested on an FM-1</strong>.</p>
+<h2 id="buttons-every-page">Buttons (every page)</h2>
+<div class="table" tabindex="0" role="region" aria-label="Table: Buttons (every page) (Button, Tap, With SEL held)"><table><thead><tr><th>Button</th><th>Tap</th><th>With SEL held</th></tr></thead><tbody><tr><td>HOME / SEQ / EDIT / FX / ARP / GLO</td><td>PERFORM / SEQUENCE / SOUND / FX / SCENE / SYSTEM</td><td></td></tr><tr><td>PLAY</td><td>start / stop (with FOLLOW = LINK, Break Surgeon's transport starts and stops it too)</td><td><strong>PANIC</strong>: all notes off, stop</td></tr><tr><td>ENV</td><td>which part the keyboard plays: BASS → STAB → PAD</td><td></td></tr><tr><td>REC</td><td>PAD HOLD on / off (the pad holds the current chord; off lets the tails ring out)</td><td></td></tr><tr><td>LFO</td><td>MUTATE the bass sound (radius: SEQUENCE K3)</td><td><strong>REVERT</strong> the last mutation</td></tr><tr><td>SAVE</td><td>save (refused while playing)</td><td></td></tr><tr><td>OCT− / OCT+</td><td>keyboard octave (−2..+2)</td><td></td></tr></tbody></table></div>
+<p><strong>SEL + white 1..8</strong> queues scene 1..8 from any page but SEQUENCE and SCENE.</p>
+<h2 id="the-keyboard">The keyboard</h2>
+<p>On PERFORM, SOUND, FX and SYSTEM every key plays the focused part, with velocity: BASS from F1 at the lowest key (bass and sub together, legato when keys overlap), STAB a chord on each key (the chord type and tension of the SOUND page), PAD a held chord on the key. The root's keys glow dimly.</p>
+<h2 id="perform-home">PERFORM (HOME)</h2>
+<div class="figs"><figure class="shot"><img src="img/perform.png" alt="PERFORM: the bass node SNARL on the sweetspot path, MORPH MOTION BITE SPACE" loading="lazy"><figcaption>PERFORM: the bass node SNARL on the sweetspot path, MORPH MOTION BITE SPACE</figcaption></figure></div>
+<p>The screen: the nearest sweetspot node (and UNREVIEWED while no node is certified), MUTATED / EXPLORE, the MORPH path with its nodes, the keyboard's part and octave, PAD state, scene, duck and output meters, LINK / SOLO.</p>
+<div class="table" tabindex="0" role="region" aria-label="Table: PERFORM (HOME) (Control, Does)"><table><thead><tr><th>Control</th><th>Does</th></tr></thead><tbody><tr><td>K1 MORPH</td><td>along the path HOLLOW → RUBBER → TALK → GROWL → SNARL → METALLIC → LASER → BROKEN, every parameter at once, trimmed for loudness</td></tr><tr><td>K2 MOTION</td><td>the groove LFO's depth and how many destinations follow it (index, cutoff, vowel)</td></tr><tr><td>K3 BITE</td><td>drive, brightness, fold and formant together, with a compensating trim</td></tr><tr><td>K4 SPACE</td><td>the delay/reverb send of stabs and pad (the bass and sub stay dry)</td></tr><tr><td>ALGO</td><td>EXPLORE: step to the next / previous neighbour of the nearest node (this reaches REESE and REESE DARK; a model change crossfades)</td></tr><tr><td>PRESET</td><td>SNAP: MORPH jumps to the nearest node, mutation cleared</td></tr><tr><td>SELECT</td><td>tempo</td></tr></tbody></table></div>
+<h2 id="sequence-seq">SEQUENCE (SEQ)</h2>
+<div class="figs"><figure class="shot"><img src="img/seq.png" alt="SEQUENCE: the bass, stab and pad tracks; a held step&#x27;s locks below" loading="lazy"><figcaption>SEQUENCE: the bass, stab and pad tracks; a held step's locks below</figcaption></figure></div>
+<p>Three tracks, 16 steps shown: BASS, STAB, PAD. Lit steps on the white keys.</p>
+<div class="table" tabindex="0" role="region" aria-label="Table: SEQUENCE (SEQ) (Control, Does)"><table><thead><tr><th>Control</th><th>Does</th></tr></thead><tbody><tr><td>white (tap)</td><td>step on / off</td></tr><tr><td>white (hold) + K1</td><td>the note: BASS in scale steps around the root; STAB and PAD the chord's scale degree</td></tr><tr><td>white (hold) + K2 / K3 / K4</td><td>VELOCITY / a MORPH lock / a BITE lock (BASS)</td></tr><tr><td>white (hold) + ALGO</td><td>an octave lock (−2..+2)</td></tr><tr><td>white (hold) + black 4 / black 5</td><td>ACCENT / SLIDE (legato glide into this note)</td></tr><tr><td>black 1..3, SELECT</td><td>the track</td></tr><tr><td>black 11</td><td>mute the track</td></tr><tr><td>PRESET</td><td>the next / previous pattern, at the next bar</td></tr><tr><td>K1..K4 (no step held)</td><td>LENGTH (1–32; steps 17–32 are not editable on this page yet), SWING, MUTATE RADIUS, SPEED (1/16, 1/32, 1/8)</td></tr></tbody></table></div>
+<h2 id="sound-edit">SOUND (EDIT)</h2>
+<div class="figs"><figure class="shot"><img src="img/sound.png" alt="SOUND on the STAB voice: RAVE CHORD, key D minor" loading="lazy"><figcaption>SOUND on the STAB voice: RAVE CHORD, key D minor</figcaption></figure></div>
+<p>The focused part (ENV). SELECT: the scale (MINOR, HARM MIN, PHRYGIAN, DORIAN, CHROMA). PRESET: the root. ALGO: the chord type (MIN, MIN7, SUS2, MIN9, MAJ7, DIM, CLUSTER, FIFTH) — or, on STAB, the stab model (RAVE CHORD, ORCH HIT, GLASS FM, DARK CHORD).</p>
+<div class="table" tabindex="0" role="region" aria-label="Table: SOUND (EDIT) (Part, K1, K2, K3, K4)"><table><thead><tr><th>Part</th><th>K1</th><th>K2</th><th>K3</th><th>K4</th></tr></thead><tbody><tr><td>BASS</td><td>MOD SHAPE (SINE, EXP, PULSE, ASYM, STEP)</td><td>SUB SAT</td><td>SUB OCT (−1 / 0)</td><td>TENSION (adds 9 / b9 to chords)</td></tr><tr><td>STAB</td><td>CHORD / TENSION</td><td>ATTACK</td><td>BITE</td><td>TAIL</td></tr><tr><td>PAD</td><td>DARKNESS</td><td>EVOLVE</td><td>TENSION</td><td>DEPTH</td></tr></tbody></table></div>
+<p>The BASS screen shows all 15 parameters of the bass as the graph sets them now.</p>
+<h2 id="fx-neuro-pressure">FX (NEURO PRESSURE)</h2>
+<div class="figs"><figure class="shot"><img src="img/fx.png" alt="FX: NEURO PRESSURE" loading="lazy"><figcaption>FX: NEURO PRESSURE</figcaption></figure></div>
+<p>K1 WEIGHT (the sub's level), K2 DIRT (drive of the bass above 115 Hz), K3 WIDTH (stereo of pads/stabs above 140 Hz — never the sub), K4 PRESSURE (glue and density with a compensating trim). PRESET: output trim. The screen: peak, glue reduction, guard catches.</p>
+<h2 id="scene-arp">SCENE (ARP)</h2>
+<p>white 1..8 queue, SAVE + white store. K1 QUANT, K2 DUCK depth (the kick ducking), K3 SOLO DUCK (duck on every beat when no link is heard), K4 FOLLOW (LINK: the link's clock, transport, scenes and fills; OFF: ignore them). A scene holds the pattern, mutes, PAD HOLD, MORPH / MOTION / BITE / SPACE, NEURO PRESSURE, root and scale.</p>
+<h2 id="system-glo">SYSTEM (GLO)</h2>
+<div class="figs"><figure class="shot"><img src="img/system.png" alt="SYSTEM: clock, link, load" loading="lazy"><figcaption>SYSTEM: clock, link, load</figcaption></figure></div>
+<p>K1 BPM, K2 VOICES (FULL, NO PAD, BASS ONLY: drop parts when the load is too high), K3 LINK CH, K4 FOLLOW. PRESET: the USB port as a host (unverified with another FM-1). The page: load and dropouts, the link, kicks received, the store, the USB mode.</p>
+</main>
+</div>
+</body>
+</html>

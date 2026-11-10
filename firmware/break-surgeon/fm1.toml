@@ -1,0 +1,20 @@
+# BREAK SURGEON: JUNGLE OS's rhythm instrument (fm1-base tools/build.py)
+name = "breaksurgeon"
+id_prefix = "FM-1_83"           # package identity: dev FM-1_8300, releases FM-1_83XXYYZZ (collisions unchecked)
+usb_manufacturer = "JUNGLE OS"
+usb_product = "BREAK SURGEON"
+o2 = ["dsp_o2.c"]              # the engines at -O2 (the shared DSP and the instrument engine)
+usb_host = true                # SYSTEM > LINK USB HOST: the port hosts the other FM-1 (UNVERIFIED with two FM-1s)
+midi_stamp = true              # MIDI in time-stamped at arrival (the clock follower)
+tagline = "breakbeat surgery and synthesized drums for drum & bass"
+repo = "https://github.com/RahelPuest/jungle-os-fm1"
+licence = "MPL-2.0"
+credits = "Built on fm1-base (Charles Vestal) and felucca-bsp (Leo Kuroshita, Hugelton Instruments), MPL-2.0."
+author = "StefanPuest"
+description = "A sliced-break player and six synthesized drum models on one sample-accurate sequencer, with fills, mutation, scenes and a DRUM PRESSURE master bus, for 160-190 BPM jungle and drum & bass."
+words = "words.tsv"
+tags = ["drum-machine", "sampler", "sequencer"]
+install = "https://rahelpuest.github.io/jungle-os-fm1/break-surgeon/install/"
+site = "https://rahelpuest.github.io/jungle-os-fm1/break-surgeon/"
+screenshot = "docs/img/perform_playing.png"
+emu = ["midi", "data"]         # the browser emulator: Web MIDI (SysEx banks, the link) and the data area kept

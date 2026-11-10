@@ -1,0 +1,8 @@
+A_break_drums_fill_174 8fb574cd
+B_mutate_undo_scene dd21bb21
+perf_modes 6184a52d
+kit_sweep_pressure c3e6bd55
+C_growl_sub_stab_pad 5c9423b4
+D_kick_ducking 6303569b
+E_morph_fm_nodes 74f1c295
+abuse_extremes ba350fe8

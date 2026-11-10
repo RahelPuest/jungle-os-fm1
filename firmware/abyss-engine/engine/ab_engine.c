@@ -1,0 +1,630 @@
+/* SPDX-License-Identifier: MPL-2.0
+ * Copyright (C) 2026 JUNGLE OS contributors */
+#include "ab_engine.h"
+
+const char *const ab_track_name[AB_NTRACKS] = {"BASS", "STAB", "PAD"};
+enum { C_PLAY, C_BPM, C_NOTE, C_STAB, C_PAD, C_PATTERN, C_SCENE, C_PANIC, C_MUTE };
+
+/* ----------------------------------------------------------- the graph --- */
+static const jg_param_t FMP[JN_NPARAMS] = {
+    {"MODEL", 0.0f, 1.0f, JG_DISCRETE, 0.0f},   {"RATIO", 0.5f, 8.0f, JG_LOG, 0.08f},
+    {"INDEX", 0.0f, 12.0f, JG_LIN, 0.15f},      {"FDBK", 0.0f, 0.85f, JG_LIN, 0.15f},
+    {"VOWEL", 0.0f, 1.0f, JG_LIN, 0.3f},        {"FORMNT", 0.0f, 1.0f, JG_LIN, 0.25f},
+    {"CUTOFF", 80.0f, 12000.0f, JG_LOG, 0.15f}, {"RES", 0.0f, 0.9f, JG_LIN, 0.15f},
+    {"DRIVE", 1.0f, 10.0f, JG_LOG, 0.15f},      {"MODENV", 0.0f, 1.0f, JG_LIN, 0.25f},
+    {"MODDEC", 0.02f, 1.5f, JG_LOG, 0.2f},      {"LFODIV", 0.0f, 7.0f, JG_DISCRETE, 0.0f},
+    {"LFODEP", 0.0f, 1.0f, JG_LIN, 0.25f},      {"FOLD", 0.0f, 1.0f, JG_LIN, 0.2f},
+    {"GLIDE", 0.001f, 0.15f, JG_LOG, 0.2f},
+};
+/* the curated nodes: initial hypotheses in physical units, UNREVIEWED until they pass the listening checklist
+ * and the measured checks (docs/development/sweetspots.md). Order of the values: FMP above. The path nodes'
+ * trims were set from the RMS of a held D2 toward -13 dBFS (tests/integration/test_engines.c prints it): a
+ * proxy for loudness, to be corrected by ear */
+typedef struct { const char *n; float v[JN_NPARAMS]; float trim; } node_def_t;
+static const node_def_t FMN[] = {
+    /*            MODEL RATIO INDEX FDBK VOWEL FORM  CUT     RES   DRIVE MENV  MDEC  DIV  DEP   FOLD  GLIDE */
+    {"HOLLOW",   {0, 1.0f, 1.5f, 0.1f, 0.2f, 0.5f, 900.0f, 0.3f, 1.5f, 0.2f, 0.15f, 4, 0.3f, 0.0f, 0.03f}, 2.6f},
+    {"RUBBER",   {0, 2.0f, 2.5f, 0.05f, 0.1f, 0.7f, 600.0f, 0.75f, 2.0f, 0.7f, 0.3f, 4, 0.5f, 0.0f, 0.06f}, -5.6f},
+    {"TALK",     {0, 1.0f, 3.5f, 0.2f, 0.5f, 0.9f, 2500.0f, 0.45f, 2.5f, 0.3f, 0.2f, 3, 0.6f, 0.1f, 0.04f}, 0.6f},
+    {"GROWL",    {0, 0.5f, 5.0f, 0.45f, 0.3f, 0.6f, 1800.0f, 0.5f, 4.0f, 0.4f, 0.25f, 4, 0.55f, 0.2f, 0.05f}, 0.0f},
+    {"SNARL",    {0, 1.5f, 7.0f, 0.6f, 0.75f, 0.5f, 4000.0f, 0.55f, 6.0f, 0.5f, 0.12f, 6, 0.45f, 0.35f, 0.02f}, -4.1f},
+    {"METALLIC", {0, 2.7f, 6.0f, 0.3f, 0.9f, 0.3f, 6000.0f, 0.6f, 3.0f, 0.6f, 0.08f, 5, 0.3f, 0.1f, 0.01f}, -2.9f},
+    {"LASER",    {0, 3.5f, 9.0f, 0.2f, 1.0f, 0.2f, 8000.0f, 0.7f, 2.5f, 0.9f, 0.05f, 7, 0.4f, 0.0f, 0.1f}, -3.6f},
+    {"BROKEN",   {0, 5.0f, 11.0f, 0.8f, 0.6f, 0.4f, 5000.0f, 0.4f, 8.0f, 0.3f, 0.1f, 6, 0.8f, 0.6f, 0.02f}, -4.6f},
+    {"REESE",    {1, 3.0f, 6.0f, 0.0f, 0.4f, 0.2f, 1200.0f, 0.3f, 2.0f, 0.1f, 0.4f, 1, 0.5f, 0.0f, 0.05f}, -1.0f},
+    {"REESE DARK", {1, 6.0f, 9.0f, 0.0f, 0.2f, 0.5f, 700.0f, 0.5f, 4.0f, 0.2f, 0.4f, 0, 0.7f, 0.1f, 0.05f}, -2.0f},
+};
+#define NFMN (sizeof FMN / sizeof FMN[0])
+
+static void graph_init(ab_engine_t *e)
+{
+    jg_graph_t *g = &e->fm;
+    uint32_t i, k;
+    static const uint8_t PATH[] = {0, 1, 2, 3, 4, 5, 6, 7};
+    static const jg_edge_t EXTRA[] = {{0, 8, JG_EDGE_XFADE}, {8, 9, 0}, {9, 3, JG_EDGE_XFADE}, {2, 4, 0}, {3, 7, 0}};
+    g->param = FMP;
+    g->nparams = JN_NPARAMS;
+    g->nnodes = NFMN;
+    for (i = 0; i < NFMN; i++) {
+        g->node[i].name = FMN[i].n;
+        for (k = 0; k < JN_NPARAMS; k++) g->node[i].v[k] = jg_to_norm(&FMP[k], FMN[i].v[k]);
+        g->node[i].trim_db = FMN[i].trim;
+        g->node[i].review = JG_UNREVIEWED;
+    }
+    g->nedges = 0;
+    for (i = 0; i + 1u < sizeof PATH; i++) {
+        g->edge[g->nedges].a = PATH[i];
+        g->edge[g->nedges].b = PATH[i + 1u];
+        g->edge[g->nedges++].flags = 0;
+    }
+    for (i = 0; i < sizeof EXTRA / sizeof EXTRA[0]; i++) g->edge[g->nedges++] = EXTRA[i];
+    g->npath = sizeof PATH;
+    for (i = 0; i < sizeof PATH; i++) g->path[i] = PATH[i];
+}
+
+const char *ab_node_name(const ab_engine_t *e) { return e->fm.node[e->fv.near].name; }
+
+void ab_set_morph(ab_engine_t *e, float t)
+{
+    e->morph = jo_clampf(t, 0.0f, 1.0f);
+    e->explore_node = -1;
+}
+
+int ab_snap(ab_engine_t *e)
+{
+    uint32_t k = jg_snap(&e->fm, e->morph);
+    e->morph = jg_path_t(&e->fm, k);
+    e->explore_node = -1;
+    e->mutated = 0;
+    return e->fm.path[k];
+}
+
+int ab_explore(ab_engine_t *e, int dir)
+{
+    uint8_t nb[8];
+    uint32_t from = e->explore_node >= 0 ? (uint32_t)e->explore_node : e->fv.near;
+    uint32_t n = jg_neighbours(&e->fm, from, nb, 8), i, pick = 0;
+    if (!n) return (int)from;
+    /* the neighbours in index order: dir +1 takes the next above, -1 the next below */
+    for (i = 0; i < n; i++)
+        if (dir > 0 ? nb[i] > from && (nb[pick] <= from || nb[i] < nb[pick]) : nb[i] < from && (nb[pick] >= from || nb[i] > nb[pick]))
+            pick = i;
+    e->explore_node = (int8_t)nb[pick];
+    e->mutated = 0;
+    return nb[pick];
+}
+
+void ab_mutate(ab_engine_t *e, float radius, uint32_t seed)
+{
+    jg_history_push(&e->hist, e->mutated ? e->mutate_v : e->fv.norm, JN_NPARAMS);
+    jg_mutate(&e->fm, e->mutated ? e->mutate_v : e->fv.norm, e->mutate_v, radius, seed);
+    e->mutated = 1;
+}
+
+int ab_revert(ab_engine_t *e)
+{
+    if (jg_history_pop(&e->hist, e->mutate_v, JN_NPARAMS)) {
+        e->mutated = 0;
+        return -1;
+    }
+    return 0;
+}
+
+/* the bass patch for this block: the graph (path, explored node or mutation), then BITE and the locks */
+static void patch_update(ab_engine_t *e)
+{
+    uint32_t i;
+    float bite = e->bite_lock >= 0.0f ? e->bite_lock : e->bite;
+    float target = e->morph_lock >= 0 ? (float)e->morph_lock * (1.0f / 255.0f) : e->morph;
+    e->morph_s += (target - e->morph_s) * (e->morph_lock >= 0 ? 0.5f : 0.15f); /* ~20 ms knob smoothing */
+    if (e->explore_node >= 0) jg_eval_node(&e->fm, (uint32_t)e->explore_node, &e->fv);
+    else jg_eval(&e->fm, e->morph_s, &e->fv);
+    if (e->mutated) {
+        for (i = 0; i < JN_NPARAMS; i++) e->fv.norm[i] = e->mutate_v[i];
+        for (i = 0; i < JN_NPARAMS; i++) e->fv.phys[i] = jg_to_phys(&FMP[i], e->mutate_v[i]);
+    }
+    for (i = 0; i < JN_NPARAMS; i++) e->patch.p[i] = e->fv.phys[i];
+    /* BITE: drive, brightness, fold and formant together, its loudness taken back by the trim below */
+    e->patch.p[JN_P_DRIVE] *= 1.0f + 2.0f * bite;
+    e->patch.p[JN_P_CUTOFF] = jo_minf(e->patch.p[JN_P_CUTOFF] * jo_exp2f(bite * 1.5f), 14000.0f);
+    e->patch.p[JN_P_FOLD] = jo_clampf(e->patch.p[JN_P_FOLD] + 0.3f * bite, 0.0f, 1.0f);
+    e->patch.p[JN_P_FORMANT] = jo_clampf(e->patch.p[JN_P_FORMANT] + 0.2f * bite, 0.0f, 1.0f);
+    e->patch.motion = e->motion;
+    e->patch.coupling = 0.3f + 0.7f * e->motion;
+}
+
+/* ------------------------------------------------------------ patterns --- */
+/* a bass line: 16 steps as "note:flags" with '.' rests; notes relative to the root, 'S' slide, 'A' accent */
+static void bass_line(js_track_t *t, const int8_t *rel, const char *flags, const int16_t *morph_lock)
+{
+    uint32_t i;
+    for (i = 0; i < 16u; i++) {
+        js_step_t *st = &t->s[i];
+        js_step_clear(st);
+        if (rel[i] == -99) continue;
+        st->flags = JS_ON;
+        st->data = (uint8_t)(64 + rel[i]); /* 64 = the root */
+        st->vel = 100;
+        if (flags[i] == 'S') st->flags |= JS_SLIDE;
+        if (flags[i] == 'A') st->flags |= JS_ACCENT, st->vel = 124;
+        if (morph_lock && morph_lock[i] >= 0) js_step_set_lock(st, AB_LK_MORPH, morph_lock[i]);
+    }
+    t->len = 16;
+}
+
+void ab_default_patterns(ab_engine_t *e)
+{
+#define R (-99)
+    static const int8_t B0[16] = {0, R, R, 0, R, R, 3, R, 0, R, -2, 0, R, R, -5, R};
+    static const char F0[17] = "A..S..A.A.SS..S.";
+    static const int16_t M0[16] = {-1, -1, -1, 150, -1, -1, 200, -1, -1, -1, 90, 120, -1, -1, 230, -1};
+    static const int8_t B1[16] = {0, R, 0, R, 0, 12, R, 0, R, 0, R, 7, R, 5, 3, R};
+    static const char F1[17] = "A.S.ASSA.S.SAS..";
+    static const int8_t B2[16] = {0, R, R, R, R, R, R, R, -2, R, R, R, R, R, -5, R};
+    static const char F2[17] = "A.......S.....S.";
+    uint32_t p, i;
+#undef R
+    for (p = 0; p < AB_NPATTERNS; p++) {
+        js_pattern_clear(&e->pat[p], AB_NTRACKS, 16);
+        e->pat[p].seed = (uint16_t)(301u + p);
+        e->pat[p].swing = 52;
+        for (i = 0; i < 16u; i++) e->pat[p].t[AB_T_STAB].s[i].data = 0, e->pat[p].t[AB_T_PAD].s[i].data = 0;
+    }
+    bass_line(&e->pat[0].t[AB_T_BASS], B0, F0, M0);
+    bass_line(&e->pat[1].t[AB_T_BASS], B1, F1, 0);
+    bass_line(&e->pat[2].t[AB_T_BASS], B2, F2, 0);
+    /* pattern 3: no bass (the intro: a pad alone) */
+    /* stabs: the off-beat rave stab of pattern 1, a single dark hit in 2 */
+    e->pat[1].t[AB_T_STAB].s[6].flags = JS_ON, e->pat[1].t[AB_T_STAB].s[14].flags = JS_ON;
+    e->pat[1].t[AB_T_STAB].s[14].data = 5; /* degree VI */
+    e->pat[2].t[AB_T_STAB].s[0].flags = JS_ON;
+    /* the pad: a chord change at the bar in every pattern (i, then VI on the second bar of 32 steps) */
+    for (p = 0; p < AB_NPATTERNS; p++) {
+        js_track_t *t = &e->pat[p].t[AB_T_PAD];
+        t->len = 32;
+        t->s[0].flags = JS_ON;
+        t->s[0].data = 0;
+        t->s[16].flags = JS_ON;
+        t->s[16].data = p == 2 ? 3 : 5;
+    }
+}
+
+static void scenes_default(ab_engine_t *e)
+{
+    /* INTRO, BUILD, DROP, MUTATION, VOID, IMPACT */
+    static const struct { uint8_t pat, pad; float mo, mt, bi, sp, w, d, wi, pr; } S[6] = {
+        {3, 1, 0.0f, 0.2f, 0.0f, 0.8f, 0.4f, 0.1f, 0.7f, 0.2f}, {2, 1, 0.2f, 0.4f, 0.2f, 0.6f, 0.5f, 0.25f, 0.6f, 0.35f},
+        {0, 0, 0.45f, 0.6f, 0.45f, 0.3f, 0.6f, 0.4f, 0.4f, 0.55f}, {0, 0, 0.75f, 0.9f, 0.7f, 0.3f, 0.6f, 0.6f, 0.4f, 0.65f},
+        {3, 1, 0.1f, 0.1f, 0.0f, 1.0f, 0.3f, 0.0f, 0.9f, 0.1f}, {1, 0, 0.6f, 0.7f, 0.8f, 0.4f, 0.65f, 0.7f, 0.5f, 0.7f},
+    };
+    uint32_t i;
+    for (i = 0; i < AB_NSCENES; i++) {
+        ab_scene_t *s = &e->scene[i];
+        uint32_t k = i < 6u ? i : 2u;
+        s->used = i < 6u;
+        s->pattern = S[k].pat;
+        s->pad_on = S[k].pad;
+        s->mute = 0;
+        s->morph = S[k].mo, s->motion = S[k].mt, s->bite = S[k].bi, s->space = S[k].sp;
+        s->fx.weight = S[k].w, s->fx.dirt = S[k].d, s->fx.width = S[k].wi, s->fx.pressure = S[k].pr, s->fx.trim_db = 0;
+        s->root = 38;
+        s->scale = JH_MINOR;
+    }
+}
+
+void ab_scene_store(ab_engine_t *e, int s)
+{
+    ab_scene_t *sc;
+    if (s < 0 || s >= AB_NSCENES) return;
+    sc = &e->scene[s];
+    sc->used = 1;
+    sc->pattern = e->cur_pat;
+    sc->mute = e->seq.mute;
+    sc->pad_on = e->pad_on;
+    sc->morph = e->morph, sc->motion = e->motion, sc->bite = e->bite, sc->space = e->space;
+    sc->fx = e->master.m;
+    sc->root = e->root;
+    sc->scale = e->scale;
+}
+
+/* ---------------------------------------------------------------- notes --- */
+static void pad_chord_on(ab_engine_t *e, int degree)
+{
+    float notes[5];
+    int base = jh_degree(e->root + 24, e->scale, degree); /* two octaves over the bass root */
+    uint32_t n = jh_chord(base, e->chord, e->tension, e->inversion, notes, JN_PAD_VOICES);
+    jn_pad_chord(&e->pad, &e->pad_p, notes, n);
+}
+static void stab_chord_on(ab_engine_t *e, int note, float vel)
+{
+    float notes[5];
+    uint32_t n = jh_chord(note, e->stab_p.chord > 0.5f ? JH_CH_MIN7 : e->chord, e->stab_p.chord, e->inversion, notes,
+                          JN_STAB_VOICES);
+    jn_stab_chord(&e->stab, &e->stab_p, notes, n, vel);
+}
+
+static void bass_on(ab_engine_t *e, float note, float vel, int slide)
+{
+    int legato = slide && e->bass_on;
+    jn_bass_note(&e->bass, note, vel, legato, &e->patch);
+    jn_sub_note(&e->sub, note, e->patch.p[JN_P_GLIDE], legato);
+    e->bass_on = 1;
+    e->last_bass_note = note;
+}
+static void bass_off(ab_engine_t *e)
+{
+    jn_bass_off(&e->bass);
+    jn_sub_off(&e->sub);
+    e->bass_on = 0;
+}
+
+static void fire_(ab_engine_t *e, const js_event_t *ev);
+static void fire(ab_engine_t *e, const js_event_t *ev)
+{
+    if (e->trace) e->trace(e->trace_ctx, ev);
+    fire_(e, ev);
+}
+static void fire_(ab_engine_t *e, const js_event_t *ev)
+{
+    float vel = (float)ev->vel * (1.0f / 127.0f), sps = js_clock_samples_per_step(&e->clock);
+    int lk;
+    switch (ev->track) {
+    case AB_T_BASS: {
+        const js_track_t *t = &e->seq.pat->t[AB_T_BASS];
+        const js_step_t *nx = &t->s[(ev->step + 1u) % (t->len ? t->len : 16u)];
+        int oct = js_step_lock((const js_step_t *)&t->s[ev->step], AB_LK_OCT);
+        float note = (float)(e->root + (int)ev->data - 64) + (oct >= 0 ? 12.0f * (float)(oct - 2) : 0.0f);
+        uint32_t i;
+        e->morph_lock = -1;
+        e->bite_lock = -1.0f;
+        for (i = 0; i < JS_NLOCK; i++) {
+            if (ev->lk_id[i] == AB_LK_MORPH) e->morph_lock = ev->lk_val[i];
+            if (ev->lk_id[i] == AB_LK_BITE) e->bite_lock = (float)ev->lk_val[i] * (1.0f / 255.0f);
+        }
+        if (e->fill_on) note += ev->hit ? 12.0f : 0.0f; /* the link's fill: octave jumps on the rolls */
+        bass_on(e, note, vel, (ev->flags & JS_SLIDE) != 0);
+        /* the gate: past the next step when it slides (legato), else 3/4 of a step (or of a ratchet hit) */
+        e->bass_gate_left = (nx->flags & JS_ON) && (nx->flags & JS_SLIDE) ? (uint32_t)(sps * 1.1f)
+                                                                           : (uint32_t)(sps * 0.75f / (float)ev->nhits);
+        (void)lk;
+        break;
+    }
+    case AB_T_STAB:
+        stab_chord_on(e, jh_degree(e->root + 24, e->scale, ev->data), vel);
+        e->stab_gate_left = (uint32_t)(sps * 0.6f);
+        break;
+    case AB_T_PAD:
+        if (e->pad_on && e->voice_mode == AB_VOICE_FULL) pad_chord_on(e, ev->data);
+        break;
+    default: break;
+    }
+}
+
+static int xform(void *ctx, uint32_t t, uint32_t abs, js_step_t *st)
+{
+    ab_engine_t *e = (ab_engine_t *)ctx;
+    if (t == AB_T_BASS && e->fill_on && (st->flags & JS_ON) && (abs & 15u) >= 8u)
+        st->ratch = (uint8_t)((abs & 15u) >= 12u ? 2 : 1); /* the fill's rolls in the bass */
+    if (t == AB_T_STAB && e->voice_mode == AB_VOICE_BASS_ONLY) return 0;
+    return 1;
+}
+
+static uint32_t next_boundary(const ab_engine_t *e, int quant)
+{
+    static const uint32_t Q[5] = {1u, 4u, 16u, 32u, 64u};
+    uint32_t q = Q[quant < 0 || quant > 4 ? 2 : quant];
+    uint32_t a = e->clock.running ? e->clock.abs_step + 2u : 0u;
+    return (a + q - 1u) / q * q;
+}
+
+static void apply_scene(ab_engine_t *e, const ab_scene_t *s, int pattern_part)
+{
+    if (pattern_part) {
+        e->cur_pat = e->next_pat = s->pattern % AB_NPATTERNS;
+        e->seq.pat = &e->pat[e->cur_pat];
+        e->seq.mute = s->mute;
+        js_seq_reset(&e->seq);
+        return;
+    }
+    e->morph = s->morph, e->motion = s->motion, e->bite = s->bite, e->space = s->space;
+    e->explore_node = -1;
+    e->mutated = 0;
+    e->master.m = s->fx;
+    jf_neuro_update(&e->master);
+    e->root = s->root;
+    e->scale = s->scale;
+    if (s->pad_on != e->pad_on) {
+        e->pad_on = s->pad_on;
+        if (e->pad_on) pad_chord_on(e, 0);
+        else jn_pad_release(&e->pad); /* the release tail plays out (the voices are not cut) */
+    }
+}
+
+static void on_step(void *ctx, uint32_t abs, uint32_t off)
+{
+    ab_engine_t *e = (ab_engine_t *)ctx;
+    (void)off;
+    if (e->fill_on && !js_before(abs, e->fill_end)) e->fill_on = 0;
+    if (abs + 1u == e->pending_at) {
+        if (e->scene_pending >= 0) apply_scene(e, &e->scene[e->scene_pending], 1);
+        else if (e->next_pat != e->cur_pat) {
+            e->cur_pat = e->next_pat;
+            e->seq.pat = &e->pat[e->cur_pat];
+            js_seq_reset(&e->seq);
+        }
+    }
+    if (abs == e->pending_at && e->scene_pending >= 0) {
+        apply_scene(e, &e->scene[e->scene_pending], 0);
+        e->scene_cur = e->scene_pending;
+        e->scene_pending = -1;
+    }
+    /* standalone ducking: on every beat when no link is heard */
+    if (e->duck_internal && !jl_alive(&e->link, e->ms) && (abs & 3u) == 0u) jf_duck_trigger(&e->duck, 1.0f);
+}
+
+/* ----------------------------------------------------------------- init --- */
+void ab_init(ab_engine_t *e, int16_t *pool)
+{
+    uint8_t *q = (uint8_t *)e;
+    uint32_t i;
+    for (i = 0; i < sizeof *e; i++) q[i] = 0;
+    jn_bass_init(&e->bass);
+    jn_sub_init(&e->sub);
+    jn_stab_init(&e->stab);
+    jn_pad_init(&e->pad);
+    e->stab_p.model = JN_STAB_RAVE;
+    e->stab_p.chord = 0.3f, e->stab_p.attack = 0.1f, e->stab_p.bite = 0.5f, e->stab_p.tail = 0.4f;
+    e->pad_p.darkness = 0.5f, e->pad_p.evolve = 0.4f, e->pad_p.tension = 0.3f, e->pad_p.depth = 0.6f;
+    e->pad_p.attack_s = 1.5f, e->pad_p.release_s = 3.0f;
+    e->morph = e->morph_s = 0.4f;
+    e->motion = 0.5f, e->bite = 0.3f, e->space = 0.4f;
+    e->morph_lock = -1;
+    e->bite_lock = -1.0f;
+    e->explore_node = -1;
+    e->root = 38; /* D */
+    e->scale = JH_MINOR;
+    e->chord = JH_CH_MIN;
+    e->tension = 0.2f;
+    e->scene_pending = -1;
+    e->scene_cur = 2;
+    e->energy = 0.5f;
+    e->follow_link = 1;
+    e->duck_depth = 0.6f;
+    graph_init(e);
+    patch_update(e);
+    js_clock_init(&e->clock, 174.0f);
+    ab_default_patterns(e);
+    js_seq_init(&e->seq, &e->pat[0]);
+    scenes_default(e);
+    jf_neuro_init(&e->master);
+    if (pool) {
+        jf_delay_init(&e->delay, pool, pool + JF_DELAY_LEN);
+        jf_verb_init(&e->verb, pool + 2u * JF_DELAY_LEN);
+    }
+    jf_duck_set(&e->duck, e->duck_depth, 0.002f, 0.03f, 0.12f);
+    jl_init(&e->link, 15);
+    e->pending_at = 0xFFFFFFFFu;
+}
+
+void ab_master_update(ab_engine_t *e) { jf_neuro_update(&e->master); }
+
+/* ------------------------------------------------------------- commands --- */
+static void cmd(ab_engine_t *e, uint8_t op, uint8_t a, uint8_t b, uint8_t c, float f) { jo_cmdq_push(&e->cmd, op, a, b, c, f); }
+void ab_cmd_play(ab_engine_t *e, int on) { cmd(e, C_PLAY, (uint8_t)(on != 0), 0, 0, 0.0f); }
+void ab_cmd_bpm(ab_engine_t *e, float bpm) { cmd(e, C_BPM, 0, 0, 0, bpm); }
+void ab_cmd_note(ab_engine_t *e, int part, int note, float vel, int on) { cmd(e, C_NOTE, (uint8_t)part, (uint8_t)note, (uint8_t)(on != 0), vel); }
+void ab_cmd_stab_chord(ab_engine_t *e, float vel) { cmd(e, C_STAB, 0, 0, 0, vel); }
+void ab_cmd_pad(ab_engine_t *e, int on) { cmd(e, C_PAD, (uint8_t)(on != 0), 0, 0, 0.0f); }
+void ab_cmd_pattern(ab_engine_t *e, int p) { cmd(e, C_PATTERN, (uint8_t)p, 0, 0, 0.0f); }
+void ab_cmd_scene(ab_engine_t *e, int s, int quant) { cmd(e, C_SCENE, (uint8_t)s, (uint8_t)quant, 0, 0.0f); }
+void ab_cmd_panic(ab_engine_t *e) { cmd(e, C_PANIC, 0, 0, 0, 0.0f); }
+void ab_cmd_mute(ab_engine_t *e, int t) { cmd(e, C_MUTE, (uint8_t)t, 0, 0, 0.0f); }
+
+static void transport(ab_engine_t *e, int on)
+{
+    if (on && !e->clock.running) {
+        js_seq_reset(&e->seq);
+        js_queue_clear(&e->q);
+        js_clock_start(&e->clock);
+    } else if (!on && e->clock.running) {
+        js_clock_stop(&e->clock);
+        js_queue_clear(&e->q);
+        bass_off(e);
+        jn_stab_release(&e->stab);
+    }
+}
+
+static void do_cmd(ab_engine_t *e, const jo_cmd_t *c)
+{
+    switch (c->op) {
+    case C_PLAY: transport(e, c->a); break;
+    case C_BPM: js_clock_set_bpm(&e->clock, c->f); break;
+    case C_NOTE:
+        if (c->a == AB_PART_BASS) {
+            if (c->c) bass_on(e, (float)c->b, c->f, e->bass_on), e->bass_gate_left = 0xFFFFFFFFu;
+            else if (e->last_bass_note == (float)c->b) bass_off(e);
+        } else if (c->a == AB_PART_STAB) {
+            if (c->c) stab_chord_on(e, c->b, c->f), e->stab_gate_left = 0xFFFFFFFFu;
+            else jn_stab_release(&e->stab);
+        } else if (c->c) {
+            e->pad_on = 1;
+            {
+                float notes[5];
+                uint32_t n = jh_chord(c->b, e->chord, e->tension, e->inversion, notes, JN_PAD_VOICES);
+                jn_pad_chord(&e->pad, &e->pad_p, notes, n);
+            }
+        }
+        break;
+    case C_STAB: stab_chord_on(e, jh_degree(e->root + 24, e->scale, 0), c->f); e->stab_gate_left = (uint32_t)(0.15f * JO_SR); break;
+    case C_PAD:
+        e->pad_on = c->a;
+        if (c->a) pad_chord_on(e, 0);
+        else jn_pad_release(&e->pad);
+        break;
+    case C_PATTERN:
+        e->next_pat = c->a % AB_NPATTERNS;
+        e->pending_at = next_boundary(e, JL_Q_BAR);
+        if (!e->clock.running) e->cur_pat = e->next_pat, e->seq.pat = &e->pat[e->cur_pat];
+        break;
+    case C_SCENE:
+        if (c->a < AB_NSCENES && e->scene[c->a].used) {
+            if (!e->clock.running || c->b == JL_Q_NOW) {
+                apply_scene(e, &e->scene[c->a], 1);
+                apply_scene(e, &e->scene[c->a], 0);
+                e->scene_cur = (int8_t)c->a;
+            } else {
+                e->scene_pending = (int8_t)c->a;
+                e->pending_at = next_boundary(e, c->b);
+            }
+        }
+        break;
+    case C_PANIC:
+        js_queue_clear(&e->q);
+        bass_off(e);
+        jn_stab_release(&e->stab);
+        jn_pad_release(&e->pad);
+        e->pad_on = 0;
+        break;
+    case C_MUTE: e->seq.mute ^= (uint8_t)(1u << (c->a % AB_NTRACKS)); break;
+    default: break;
+    }
+}
+
+/* ----------------------------------------------------------------- link --- */
+void ab_link_kick(ab_engine_t *e, uint8_t vel)
+{
+    e->link_kicks++;
+    jf_duck_trigger(&e->duck, (float)vel * (1.0f / 127.0f));
+}
+
+void ab_link_packet(ab_engine_t *e, uint32_t pkt, uint32_t t24)
+{
+    jl_event_t ev;
+    if (!jl_decode(&e->link, pkt, e->ms, &ev)) return;
+    switch (ev.type) {
+    case JL_EV_CLOCK:
+        if (e->follow_link) {
+            e->clock.source = JS_CLK_MIDI;
+            e->last_clock_ms = e->ms;
+            js_clock_midi_tick(&e->clock, t24);
+        }
+        break;
+    case JL_EV_START:
+        if (e->follow_link) {
+            js_seq_reset(&e->seq);
+            js_queue_clear(&e->q);
+            js_clock_midi_start(&e->clock);
+        }
+        break;
+    case JL_EV_CONTINUE: if (e->follow_link) e->clock.running = 1; break;
+    case JL_EV_STOP: if (e->follow_link) transport(e, 0); break;
+    case JL_EV_KICK: ab_link_kick(e, ev.a); break;
+    case JL_EV_SCENE: {
+        jo_cmd_t c = {C_SCENE, ev.a, ev.b, 0, 0.0f};
+        do_cmd(e, &c);
+        break;
+    }
+    case JL_EV_FILL_BEGIN:
+        e->fill_on = 1;
+        e->fill_end = next_boundary(e, JL_Q_BAR) + 16u * ev.a;
+        break;
+    case JL_EV_FILL_END: e->fill_on = 0; break;
+    case JL_EV_RESET: e->mutated = 0; e->explore_node = -1; e->fill_on = 0; break;
+    case JL_EV_ENERGY: e->energy = (float)ev.a * (1.0f / 127.0f); break;
+    case JL_EV_ROOT: e->root = (int8_t)(36 + ev.a); break;
+    case JL_EV_SCALE: e->scale = ev.a < JH_NSCALES ? ev.a : 0u; break;
+    default: break;
+    }
+}
+
+/* --------------------------------------------------------------- render --- */
+static void render_voices(ab_engine_t *e, uint32_t pos, uint32_t n)
+{
+    float steps = (float)e->clock.abs_step + (float)e->clock.phase * (1.0f / 4294967296.0f);
+    uint32_t i;
+    jn_bass_render(&e->bass, &e->patch, steps, 0.0f, e->b_bass + pos, n);
+    jn_sub_render(&e->sub, e->b_sub + pos, n);
+    if (e->voice_mode != AB_VOICE_BASS_ONLY) jn_stab_render(&e->stab, &e->stab_p, e->b_l + pos, e->b_r + pos, n);
+    if (e->voice_mode == AB_VOICE_FULL) jn_pad_render(&e->pad, &e->pad_p, e->b_l + pos, e->b_r + pos, n);
+    for (i = 0; i < n; i++) e->b_duck[pos + i] = jf_duck_tick(&e->duck);
+    /* the gates count down in the segment */
+    if (e->bass_gate_left != 0xFFFFFFFFu) {
+        if (e->bass_gate_left > n) e->bass_gate_left -= n;
+        else if (e->bass_gate_left) { e->bass_gate_left = 0; bass_off(e); }
+    }
+    if (e->stab_gate_left != 0xFFFFFFFFu) {
+        if (e->stab_gate_left > n) e->stab_gate_left -= n;
+        else if (e->stab_gate_left) { e->stab_gate_left = 0; jn_stab_release(&e->stab); }
+    }
+}
+
+static void render_block(ab_engine_t *e, uint32_t n)
+{
+    js_hooks_t h;
+    jo_cmd_t c;
+    js_event_t ev;
+    uint32_t t0, pos = 0, i;
+    float trim, send_amt;
+    while (jo_cmdq_pop(&e->cmd, &c)) do_cmd(e, &c);
+    patch_update(e);
+    jf_duck_set(&e->duck, e->duck_depth, 0.002f, 0.03f, 0.12f);
+    h.on_step = on_step;
+    h.on_clock_out = 0;
+    h.transform = xform;
+    h.ctx = e;
+    t0 = e->clock.now;
+    js_run(&e->seq, &e->clock, &e->q, n, &h);
+    for (i = 0; i < n; i++) e->b_sub[i] = e->b_bass[i] = e->b_l[i] = e->b_r[i] = 0.0f;
+    for (;;) {
+        uint32_t nd, end;
+        while (js_queue_pop_due(&e->q, t0 + pos + 1u, &ev)) fire(e, &ev);
+        if (pos >= n) break;
+        nd = js_queue_next_due(&e->q, t0 + n);
+        end = js_before(nd, t0 + n) ? nd - t0 : n;
+        if (end <= pos) end = pos + 1u;
+        render_voices(e, pos, end - pos);
+        pos = end;
+    }
+    /* the bass's loudness: the node's trim and BITE's compensation */
+    trim = jo_db2lin(e->fv.trim_db - 4.0f * (e->bite_lock >= 0.0f ? e->bite_lock : e->bite));
+    send_amt = 0.15f + 0.6f * e->space;
+    for (i = 0; i < n; i++) {
+        e->b_bass[i] *= trim;
+        e->b_send[i] = (e->b_l[i] + e->b_r[i]) * 0.5f * send_amt;
+    }
+    if (e->delay.bl) {
+        float spb = js_clock_samples_per_step(&e->clock) * 3.0f * JO_INV_SR; /* a dotted 8th */
+        jf_delay_set(&e->delay, spb, 0.3f + 0.35f * e->space, 3500.0f);
+        e->delay.mix = 0.5f;
+        jf_delay_process(&e->delay, e->b_send, e->b_l, e->b_r, n);
+        jf_verb_process(&e->verb, e->b_send, e->b_l, e->b_r, n);
+    }
+    jf_neuro_process(&e->master, e->b_sub, e->b_bass, e->b_l, e->b_r, e->b_duck, n);
+    {
+        uint32_t tot = n * 1000u + e->ms_rem;
+        e->ms += tot / 44118u;
+        e->ms_rem = tot % 44118u;
+    }
+    /* the clock gone quiet for 500 ms: keep running at the last tempo, on the internal clock */
+    if (e->clock.source == JS_CLK_MIDI && e->ms - e->last_clock_ms > 500u) e->clock.source = JS_CLK_INT;
+    e->blocks++;
+}
+
+void ab_render(ab_engine_t *e, int32_t *lr, uint32_t n, float out_gain)
+{
+    uint32_t i, done = 0;
+    float pk = e->peak;
+    while (done < n) {
+        uint32_t m = n - done > AB_BLOCK_MAX ? AB_BLOCK_MAX : n - done;
+        render_block(e, m);
+        for (i = 0; i < m; i++) {
+            float l = jo_clampf(e->b_l[i] * out_gain, -1.0f, 1.0f), r = jo_clampf(e->b_r[i] * out_gain, -1.0f, 1.0f);
+            if (jo_absf(l) > pk) pk = jo_absf(l);
+            if (jo_absf(r) > pk) pk = jo_absf(r);
+            lr[2u * (done + i)] = (int32_t)(l * 8388607.0f);
+            lr[2u * (done + i) + 1u] = (int32_t)(r * 8388607.0f);
+        }
+        done += m;
+    }
+    e->peak = pk;
+}

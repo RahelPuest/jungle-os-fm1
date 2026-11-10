@@ -1,0 +1,55 @@
+# Break Surgeon in fm1-base's host simulator: the whole app, scripted (tests/host/README.md)
+wait 600
+shot bs_perform_idle.png
+wav bs_smoke.wav
+tap PLAY
+wait 2500
+shot bs_perform_playing.png
+# a fill (ENV), then hold GLITCH (white key 5) for a bar, then RETURN (REC)
+tap ENV
+wait 2000
+key w4 down
+wait 1400
+key w4 up
+tap REC
+wait 2000
+# the SEQUENCE page: track KICK (black key 1), step 3 on, held step 3 with VEL up
+tap SEQ
+tapkey b1
+tapkey w3
+key w5 down
+turn K1 -10
+key w5 up
+wait 300
+shot bs_seq.png
+tap EDIT
+wait 300
+shot bs_sound_kick.png
+tapkey b0
+wait 300
+shot bs_sound_break.png
+tap FX
+turn ALGO 2
+wait 300
+shot bs_fx.png
+tap ARP
+tapkey w4
+wait 2500
+shot bs_scene.png
+tap GLO
+wait 300
+shot bs_system.png
+# saving while playing is refused (a flash write would stall the audio)
+tap SAVE
+expect store_writes 0
+tap PLAY
+wait 300
+wavstop
+tap SAVE
+wait 200
+expect store_writes >0
+reboot
+wait 600
+tap SEQ
+wait 300
+shot bs_after_reboot.png

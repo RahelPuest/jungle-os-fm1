@@ -1,0 +1,20 @@
+# ABYSS ENGINE: JUNGLE OS's tonal instrument (fm1-base tools/build.py)
+name = "abyssengine"
+id_prefix = "FM-1_84"           # package identity: dev FM-1_8400, releases FM-1_84XXYYZZ (collisions unchecked)
+usb_manufacturer = "JUNGLE OS"
+usb_product = "ABYSS ENGINE"
+o2 = ["dsp_o2.c"]              # the engines at -O2
+usb_host = true                # SYSTEM > LINK USB HOST (UNVERIFIED with two FM-1s)
+midi_stamp = true              # MIDI in time-stamped at arrival: the link's clock is followed by its stamps
+words = "words.tsv"
+tagline = "neuro bass, clean sub, stabs and cinematic pads"
+repo = "https://github.com/RahelPuest/jungle-os-fm1"
+licence = "MPL-2.0"
+credits = "Built on fm1-base (Charles Vestal) and felucca-bsp (Leo Kuroshita, Hugelton Instruments), MPL-2.0."
+author = "StefanPuest"
+description = "An FM and Reese neuro bass navigated through a curated sweetspot graph, a separate clean sub, rave and glass stabs and an evolving pad, on a harmonic sequencer, with kick-linked ducking and a bass-safe NEURO PRESSURE master."
+tags = ["synth", "sequencer", "fm"]
+install = "https://rahelpuest.github.io/jungle-os-fm1/abyss-engine/install/"
+site = "https://rahelpuest.github.io/jungle-os-fm1/abyss-engine/"
+screenshot = "docs/img/perform.png"
+emu = ["midi", "data"]         # the browser emulator: Web MIDI (the link) and the data area kept

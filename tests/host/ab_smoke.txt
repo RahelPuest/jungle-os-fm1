@@ -1,0 +1,48 @@
+# Abyss Engine in fm1-base's host simulator (tests/host/README.md)
+wait 600
+wav ab_smoke.wav
+tap PLAY
+wait 2000
+turn K1 30
+wait 1500
+shot ab_perform.png
+turn PRESET 1
+turn ALGO 1
+wait 800
+# play the stab part on the keys, then hold the pad (REC)
+tap ENV
+tapkey w4 110
+tapkey w7 110
+tap REC
+wait 2000
+tap LFO
+wait 1500
+press SEL
+tap LFO
+release SEL
+# a link from Break Surgeon: clocks at 172 BPM on USB and kick triggers on channel 16
+clock 48 15
+midi 9F 24 78
+wait 100
+midi 9F 24 78
+tap SEQ
+key w0 down
+turn K3 20
+key w0 up
+shot ab_seq.png
+tap EDIT
+shot ab_sound.png
+tap FX
+shot ab_fx.png
+tap GLO
+wait 300
+shot ab_system.png
+tap PLAY
+wait 300
+wavstop
+tap SAVE
+wait 200
+expect store_writes >0
+reboot
+wait 600
+shot ab_after_reboot.png
