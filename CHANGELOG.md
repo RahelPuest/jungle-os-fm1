@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1 (2026-11-10): an Amen to start with
+
+Still not installed on a physical FM-1.
+
+Break Surgeon
+- **The built-in test break plays the Amen pattern:** kicks on 1, 1-and, 3-and and 3-a; full snares on 2 and 4,
+  lighter ones in between; a ride on 8ths with its quarters on the bell. 170 BPM, 16 slices, the same classes as
+  before on the slices the patterns use (kicks on 1 and 3-and, snares on 2 and 4).
+- Synthesized from Break Surgeon's own kick, snare and hat models: the pattern only, nothing of the 1969 recording,
+  which is copyrighted. Its name on the BREAK page: AMEN PATTERN 170.
+
 ## 0.3.0 (2026-11-10): the drum & bass look; text that fits
 
 Still not installed on a physical FM-1. The sound is unchanged since 0.2.0.

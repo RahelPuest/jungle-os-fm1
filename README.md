@@ -17,7 +17,7 @@
 
 <p align="center">
   <img alt="Licence MPL-2.0" src="https://img.shields.io/badge/licence-MPL--2.0-blue">
-  <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-orange">
+  <img alt="Version 0.3.1" src="https://img.shields.io/badge/version-0.3.1-orange">
   <img alt="Not yet tested on hardware" src="https://img.shields.io/badge/hardware-not%20yet%20tested-red">
 </p>
 
@@ -47,7 +47,7 @@ Two custom firmwares for two M-VAVE FM-1s that together make a hardware drum & b
 
 They talk **JUNGLE LINK** (plain MIDI: clock, transport, scenes, fills, kick triggers) and each works alone.
 
-## Status: 0.3.0 — simulator-tested, not yet on hardware
+## Status: 0.3.1 — simulator-tested, not yet on hardware
 
 | | |
 |---|---|
@@ -71,7 +71,7 @@ tools/build_all.sh --no-device                  # + both host simulators and the
 ```
 
 The site (both browser emulators, manuals, web installers, the release packages in `release/`):
-`tools/make_site.sh 0.3.0` writes `release/site`, which `.github/workflows/pages.yml` deploys on a push to main.
+`tools/make_site.sh 0.3.1` writes `release/site`, which `.github/workflows/pages.yml` deploys on a push to main.
 
 Device packages need the JieLi toolchain, the AC79 SDK and Docker: [docs/development/setup.md](docs/development/setup.md).
 Installing on an FM-1: [docs/development/install-and-recovery.md](docs/development/install-and-recovery.md) —
@@ -100,4 +100,4 @@ submodule, unmodified. Everything else is original. GPL firmwares (SLOOP, X0X, F
 facts and ideas only; no code was copied ([THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 
 JUNGLE OS is **MPL-2.0** ([LICENSE](LICENSE)). It is not affiliated with M-VAVE; M-VAVE and FM-1 are trademarks of
-their owners. The repository contains no third-party audio: the test break is generated.
+their owners. The repository contains no third-party audio: the test break (the Amen *pattern*, synthesized from the firmware's own drum models) is generated.

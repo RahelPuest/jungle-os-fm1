@@ -122,7 +122,7 @@ static void track_str(js_track_t *t, const char *s)
 
 void bs_default_patterns(bs_engine_t *e)
 {
-    /* at 174 BPM; the test break's own hits (jo_break.c): kicks on 1 and the and of 3, snares on 2 and 4 */
+    /* at 174 BPM; the test break's own hits (jo_break.c, the Amen pattern): kicks on 1, 1 and, 3 and, 3 a; snares on 2 and 4 */
     static const char *const P[BS_NPATTERNS][BS_NTRACKS] = {
         /* 0 DROP: the break whole under a two-step kick and backbeat, offbeat hats */
         {"xxxxxxxxxxxxxxxx", "X.........x.....", "....X.......X...", "", "..o...x...o...O.", ".......o.......o", ""},

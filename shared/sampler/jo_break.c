@@ -76,62 +76,63 @@ void jb_slice_even(jb_break_t *b, uint32_t n)
 }
 
 /* ------------------------------------------------------------ test break --- */
-/* one bar of 16ths at 170 BPM, an original two-step groove in the jungle manner (not a copy of a recorded break):
- *   K . h . S . h g h . K h S . h g   K kick, S snare, g ghost snare, h hat; a shaker on every 8th under it
- * played as a drummer would: ghosts soft and a little late, the hats' offbeats accented, every hit's velocity
- * varied a little; then a small room (early reflections that feed back), a sampler's 12 bits at 22 kHz. */
+/* one bar of 16ths at 170 BPM in the Amen pattern (the groove of the Winstons' "Amen, Brother" drum break, as drum
+ * tabs write it), synthesized here from JUNGLE OS's own drum models: no sound of the recording is used.
+ *   ride  x . x . x . x . x . x . x . x .
+ *   snare . . . . S . . s . s . . S . . s     S full, s lighter
+ *   kick  K . K . . . . . . . K K . . . .
+ * played as a drummer would: the in-between snares lighter, every hit's velocity varied a little, the ride's
+ * quarters on the bell; then a small room (early reflections that feed back), a sampler's 12 bits at 22 kHz. */
 #define TB_BPM 170.0f
 uint32_t jb_testbreak_frames(uint32_t rate) { return (uint32_t)((float)rate * 60.0f / TB_BPM * 4.0f); }
 
-static const char TB_PAT[] = "K.h.S.hgh.KhS.hg";
+static const char TB_PAT[] = "K.K.S..s.sKKS..s";
 
 void jb_testbreak_make(jb_break_t *b, int16_t *buf, uint32_t rate)
 {
-    enum { V_K, V_S, V_G, V_H, V_SH, NV };
+    enum { V_K, V_S, V_R, NV };
     jd_voice_t v[NV];
     jd_sound_t snd[NV];
     float chunk[32];
     /* the drums run at the FM-1 rate; resampled by holding (rate <= JO_SR) through a phase counter */
     float step = (float)rate * JO_INV_SR, acc = 0.0f, step_src = 60.0f / TB_BPM / 4.0f * JO_SR;
     uint32_t frames = jb_testbreak_frames(rate), w = 0, src = 0, i, s, k;
-    struct { uint32_t at; uint8_t voice; float vel; } ev[40];
+    struct { uint32_t at; uint8_t voice, open; float vel; } ev[40];
     uint32_t nev = 0, next = 0;
     jo_rng_t rng;
-    static const uint8_t MODEL[NV] = {JD_KICK, JD_SNARE, JD_GHOST, JD_HATS, JD_HATS};
+    static const uint8_t MODEL[NV] = {JD_KICK, JD_SNARE, JD_HATS};
     jo_rng_seed(&rng, 170u);
     for (k = 0; k < NV; k++) {
         jd_voice_init(&v[k], MODEL[k], k + 1u);
         jd_sound_default(&snd[k], MODEL[k]);
     }
-    snd[V_K].m[0] = 0.4f; snd[V_K].m[1] = 0.5f;                       /* a rounder kick than the synth track's */
-    snd[V_S].m[0] = 0.6f; snd[V_S].m[2] = 0.5f; snd[V_S].tune = -1.0f; /* a fuller, longer snare */
-    snd[V_H].m[0] = 0.35f; snd[V_H].m[1] = 0.45f;
-    snd[V_SH].m[0] = 0.0f; snd[V_SH].m[1] = 0.6f; snd[V_SH].m[2] = 0.2f; /* the shaker: noise only */
-    snd[V_SH].level = 0.35f;
+    snd[V_K].m[0] = 0.35f; snd[V_K].m[1] = 0.45f; snd[V_K].tune = 1.5f;   /* a round, a little tight sixties kick */
+    snd[V_S].m[0] = 0.75f; snd[V_S].m[2] = 0.45f; snd[V_S].tune = 2.0f;   /* a bright, ringing snare, pitched up */
+    snd[V_R].m[0] = 0.95f; snd[V_R].m[1] = 0.35f; snd[V_R].m[2] = 0.8f;   /* the ride: metal, long, washy */
+    snd[V_R].level = 0.6f;
     /* the events, in source samples */
     for (s = 0; s < 16u; s++) {
         uint32_t at = (uint32_t)((float)s * step_src);
         float hum = 0.92f + 0.08f * jo_rng_bi(&rng);
         switch (TB_PAT[s]) {
-        case 'K': ev[nev].voice = V_K; ev[nev].vel = (s == 0 ? 1.0f : 0.9f) * hum; ev[nev++].at = at; break;
-        case 'S': ev[nev].voice = V_S; ev[nev].vel = 1.0f * hum; ev[nev++].at = at; break;
-        case 'g': ev[nev].voice = V_G; ev[nev].vel = (0.55f + 0.2f * jo_rng_bi(&rng)); ev[nev++].at = at + (uint32_t)(0.009f * JO_SR); break;
-        case 'h': ev[nev].voice = V_H; ev[nev].vel = ((s & 3u) == 2u ? 0.85f : 0.55f) * hum; ev[nev++].at = at; break;
+        case 'K': ev[nev].voice = V_K; ev[nev].vel = (s == 0 ? 1.0f : 0.88f) * hum; ev[nev].open = 0; ev[nev++].at = at; break;
+        case 'S': ev[nev].voice = V_S; ev[nev].vel = 1.0f * hum; ev[nev].open = 0; ev[nev++].at = at; break;
+        case 's': ev[nev].voice = V_S; ev[nev].vel = 0.68f * hum; ev[nev].open = 0; ev[nev++].at = at + (uint32_t)(0.004f * JO_SR); break;
         default: break;
         }
-        if (!(s & 1u)) { ev[nev].voice = V_SH; ev[nev].vel = ((s & 3u) == 2u ? 0.9f : 0.5f) * hum; ev[nev++].at = at + 40u; }
+        if (!(s & 1u)) { ev[nev].voice = V_R; ev[nev].open = 1; ev[nev].vel = ((s & 3u) == 0u ? 0.9f : 0.6f) * hum; ev[nev++].at = at + 30u; }
     }
-    /* (in order of time: the shaker's 40-sample lag and the ghosts' 9 ms keep them after their step's hit) */
+    /* (in order of time: the ride's 30-sample lag and the light snares' 4 ms keep them after their step's hit) */
     for (i = 1; i < nev; i++)
         for (k = i; k > 0u && ev[k - 1u].at > ev[k].at; k--) {
-            uint32_t ta = ev[k].at; uint8_t tv = ev[k].voice; float tl = ev[k].vel;
-            ev[k].at = ev[k - 1u].at, ev[k].voice = ev[k - 1u].voice, ev[k].vel = ev[k - 1u].vel;
-            ev[k - 1u].at = ta, ev[k - 1u].voice = tv, ev[k - 1u].vel = tl;
+            uint32_t ta = ev[k].at; uint8_t tv = ev[k].voice, to = ev[k].open; float tl = ev[k].vel;
+            ev[k].at = ev[k - 1u].at, ev[k].voice = ev[k - 1u].voice, ev[k].open = ev[k - 1u].open, ev[k].vel = ev[k - 1u].vel;
+            ev[k - 1u].at = ta, ev[k - 1u].voice = tv, ev[k - 1u].open = to, ev[k - 1u].vel = tl;
         }
     while (w < frames) {
         uint32_t n = 32u;
         while (next < nev && ev[next].at <= src) {
-            jd_trigger(&v[ev[next].voice], &snd[ev[next].voice], ev[next].vel, 0);
+            jd_trigger(&v[ev[next].voice], &snd[ev[next].voice], ev[next].vel, ev[next].open);
             next++;
         }
         if (next < nev && ev[next].at - src < n) n = ev[next].at - src;
@@ -167,12 +168,12 @@ void jb_testbreak_make(jb_break_t *b, int16_t *buf, uint32_t rate)
     b->rate = rate;
     b->bpm = TB_BPM;
     b->bars = 1;
-    for (i = 0; i < 16u; i++) b->name[i] = "TEST BREAK 170\0\0"[i];
+    for (i = 0; i < 16u; i++) b->name[i] = "AMEN PATTERN 170"[i];
     b->name[16] = 0;
     jb_slice_even(b, 16);
     for (s = 0; s < 16u; s++)
-        b->cls[s] = TB_PAT[s] == 'K' ? JB_CLASS_KICK : TB_PAT[s] == 'S' ? JB_CLASS_SNARE
-                    : TB_PAT[s] == 'h' ? JB_CLASS_HAT : TB_PAT[s] == 'g' ? JB_CLASS_OTHER : JB_CLASS_NONE;
+        b->cls[s] = TB_PAT[s] == 'K' ? JB_CLASS_KICK : TB_PAT[s] == 'S' || TB_PAT[s] == 's' ? JB_CLASS_SNARE
+                    : JB_CLASS_HAT; /* the rest: the ride alone */
 }
 
 /* ---------------------------------------------------------------- player --- */

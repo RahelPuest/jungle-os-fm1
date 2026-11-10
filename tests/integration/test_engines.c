@@ -106,7 +106,7 @@ TEST(test_link_out_kicks)
     BS.midi_out = count_out;
     kick_pkts = 0;
     bs_go(4.0f * bar_s(174.0f));
-    /* pattern 0: two synth kicks a bar plus the test break's kick-class slices (3 a bar), rate-limited */
+    /* pattern 0: two synth kicks a bar plus the test break's kick-class slices (4 a bar), rate-limited */
     CHECKF(kick_pkts >= 8 && kick_pkts <= 4 * 5, "kick triggers %u", kick_pkts);
 }
 

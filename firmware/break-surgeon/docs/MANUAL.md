@@ -165,10 +165,12 @@ The models:
 The BREAK screen shows the break's name, tempo, slice count, whether it comes from the bank or is the built-in test
 break, and the waveform with the slice marks.
 
-**The built-in test break** is an original two-step groove in the jungle manner, played as a drummer would: kicks
-on 1 and the "and" of 3, snares on 2 and 4, soft and slightly late ghost snares, accented offbeat hats over an 8th
-shaker. It is mixed in a small room and stored as a sampler would store it (12 bits at 22 kHz). It isn't a copy of
-any recorded break; for the real thing, load your own breaks (below).
+**The built-in test break** plays the Amen pattern, the groove of the most sampled break in jungle, at 170 BPM:
+kicks on 1, the "and" of 1, the "and" of 3 and right after it; full snares on 2 and 4, lighter ones in between;
+a ride on 8ths with its quarters on the bell. Each hit is synthesized by BREAK SURGEON's own drum models, mixed in
+a small room and stored as a sampler would store it (12 bits at 22 kHz). It is the pattern only: no sound of the
+original recording (The Winstons, "Amen, Brother", 1969) is used, as that recording is copyrighted. To play the
+real break, or any other, load a recording you have the rights to (below).
 
 ## FX (DRUM PRESSURE)
 
