@@ -5,6 +5,12 @@ wav bs_smoke.wav
 tap PLAY
 wait 2500
 shot bs_perform_playing.png
+# SEL held: the strip and the page show the SEL layer
+press SEL
+wait 200
+shot bs_sel.png
+release SEL
+wait 200
 # a fill (ENV), then hold GLITCH (white key 5) for a bar, then RETURN (REC)
 tap ENV
 wait 2000

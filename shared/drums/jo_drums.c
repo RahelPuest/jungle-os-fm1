@@ -1,7 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 JUNGLE OS contributors */
 /* Procedural drum models tuned for 160-190 BPM drum & bass. The ranges are initial hypotheses, checked by
- * tests/unit/test_drums.c (bounded, finite, decaying) and by ear from tests/audio-regression renders. */
+ * tests/unit/test_modules.c (bounded, finite, decaying) and by ear from tests/audio-regression renders.
+ * 0.2: the kick sits at 45-75 Hz (55 Hz by default: the sub is Abyss Engine's) with a tonal beater click; the
+ * snare is a tuned body with a pitch drop, a crack, the wires' snap and their tail, each scaled by how hard it is
+ * hit; the ghost snare is that snare played softly; the hats lean to noise (shaker-like) unless METAL is up. */
 #include "jo_drums.h"
 
 const char *const jd_model_name[JD_NMODELS] = {"PUNCH KICK", "CRACK SNARE", "GHOST SNARE", "METAL HATS", "BREAK PERC",
@@ -18,10 +21,10 @@ static inline float lmap(float m, float lo, float hi) { return lo + (hi - lo) * 
 void jd_sound_default(jd_sound_t *s, int model)
 {
     static const float D[JD_NMODELS][JD_NMACRO] = {
-        {0.35f, 0.6f, 0.4f, 0.25f}, /* kick: tight, punchy, ~48 Hz */
-        {0.5f, 0.6f, 0.35f, 0.3f},  /* snare */
-        {0.5f, 0.4f, 0.3f, 0.5f},   /* ghost */
-        {0.5f, 0.6f, 0.25f, 0.2f},  /* hats */
+        {0.45f, 0.6f, 0.4f, 0.25f}, /* kick: short, punchy, ~55 Hz */
+        {0.5f, 0.6f, 0.4f, 0.3f},   /* snare */
+        {0.45f, 0.4f, 0.35f, 0.5f}, /* ghost */
+        {0.3f, 0.55f, 0.3f, 0.25f}, /* hats */
         {0.5f, 0.35f, 0.3f, 0.3f},  /* perc */
         {0.5f, 0.5f, 0.5f, 0.2f},   /* impact */
     };
@@ -49,6 +52,7 @@ void jd_choke(jd_voice_t *v)
         float m = jo_decay_mul(0.012f);
         if (v->amp_mul > m) v->amp_mul = m;
         if (v->amp2_mul > m) v->amp2_mul = m;
+        if (v->snap_mul > m) v->snap_mul = m;
     }
 }
 
@@ -65,6 +69,7 @@ void jd_trigger(jd_voice_t *v, const jd_sound_t *s, float vel, int open)
     v->active = 1;
     v->open = (uint8_t)open;
     v->click = 0.0f;
+    v->snap = 0.0f;
     v->amp2 = 0.0f;
     v->fsweep = 0.0f;
     v->fsweep_mul = 1.0f;
@@ -78,60 +83,61 @@ void jd_trigger(jd_voice_t *v, const jd_sound_t *s, float vel, int open)
     for (i = 0; i < 6u; i++)
         v->ph[i] = 0.0f;
     switch (v->model) {
-    case JD_KICK: { /* WEIGHT decay, PUNCH sweep + click, PITCH body, DRIVE */
-        float tau = lmap(1.0f - m1, 0.006f, 0.030f);
-        v->f0 = xmap(m2, 36.0f, 64.0f) * tune;
-        v->fsweep = v->f0 * lmap(m1, 2.0f, 7.0f);
+    case JD_KICK: { /* WEIGHT decay, PUNCH sweep + beater click, PITCH body (45-75 Hz), DRIVE */
+        float hard = 0.55f + 0.45f * jo_clampf(vel, 0.0f, 1.0f); /* a harder hit: more sweep, more click */
+        float tau = lmap(1.0f - m1, 0.004f, 0.022f);
+        v->f0 = xmap(m2, 45.0f, 75.0f) * tune;
+        v->fsweep = v->f0 * lmap(m1, 2.5f, 8.0f) * hard;
         v->fsweep_mul = jo_expf(-1.0f / (tau * JO_SR));
         v->amp = 1.0f;
-        v->amp_mul = jo_decay_mul(xmap(m0, 0.12f, 0.75f));
-        v->click = lmap(m1, 0.05f, 0.55f);
-        v->click_mul = jo_decay_mul(0.004f);
+        v->amp_mul = jo_decay_mul(xmap(m0, 0.08f, 0.5f));
+        v->click = lmap(m1, 0.1f, 0.6f) * hard;            /* the beater: a tonal blip at 1.8-3.8 kHz */
+        v->click_mul = jo_decay_mul(0.0035f);
+        v->inc[1] = xmap(m1, 1800.0f, 3800.0f) * JO_INV_SR;
+        v->amp2 = lmap(m1, 0.05f, 0.3f) * hard * hard;     /* and a shorter noise snap on top */
+        v->amp2_mul = jo_decay_mul(0.0015f);
         v->drive = 1.0f + 6.0f * m3 * m3;
-        v->outgain = g / jo_tanh(v->drive); /* the driven peak held at the level */
+        v->outgain = g / jo_tanh(v->drive * 1.2f);         /* the driven peak held near the level */
         break;
     }
-    case JD_SNARE: { /* BODY tone, CRACK noise brightness + snap, TAIL, PRESSURE drive */
-        v->f0 = xmap(0.5f, 160.0f, 260.0f) * tune;
-        v->fsweep = v->f0 * 0.35f;
-        v->fsweep_mul = jo_decay_mul(0.05f);
-        v->tone_mix = lmap(m0, 0.15f, 0.9f);
+    case JD_SNARE:
+    case JD_GHOST: {
+        /* SNARE: BODY, CRACK, TAIL, PRESSURE. GHOST: the same drum played softly, TONE (brightness), SNAP, DECAY
+         * (SWING is the sequencer's: where the ghosts fall). How hard it is hit scales the crack and the snap far
+         * more than the body, so a soft hit is a dull tap and a hard one cracks. */
+        int gh = v->model == JD_GHOST;
+        float vv = jo_clampf(vel, 0.0f, 1.0f);
+        float hard = gh ? 0.3f + 0.35f * vv : 0.45f + 0.55f * vv;
+        float body = gh ? 0.4f : m0, crack = gh ? 0.6f * m1 : m1, tail = gh ? 0.45f * m2 : m2, bright = gh ? m0 : m1;
+        v->f0 = 185.0f * tune * (1.0f + 0.05f * hard);
+        v->fsweep = v->f0 * lmap(hard, 0.3f, 0.8f);       /* the head's pitch drop */
+        v->fsweep_mul = jo_decay_mul(0.018f);
+        v->tone_mix = lmap(body, 0.25f, 1.0f);
         v->amp = 1.0f;
-        v->amp_mul = jo_decay_mul(lmap(m0, 0.06f, 0.16f));
-        v->noise_mix = lmap(m1, 0.5f, 1.0f);
-        v->amp2 = 1.0f;
-        v->amp2_mul = jo_decay_mul(xmap(m2, 0.09f, 0.55f));
-        v->bright_g = jo_svf_g(xmap(m1, 1500.0f, 7000.0f));
-        v->res = 0.2f;
-        v->click = lmap(m1, 0.2f, 0.8f);
-        v->click_mul = jo_decay_mul(0.006f);
-        v->drive = 1.0f + 5.0f * m3;
-        v->outgain = 0.7f * g / jo_tanh(v->drive);
+        v->amp_mul = jo_decay_mul(lmap(body, 0.05f, 0.14f));
+        v->noise_mix = 0.8f;
+        v->amp2 = 1.0f;                                     /* the wires' tail */
+        v->amp2_mul = jo_decay_mul(xmap(tail, 0.07f, 0.42f) * (0.6f + 0.4f * hard));
+        v->bright_g = jo_svf_g(xmap(bright, 1800.0f, 6500.0f) * (0.6f + 0.4f * hard));
+        v->res = 0.25f;
+        v->snap = lmap(crack, 0.4f, 1.0f) * hard * jo_sqrtf(hard); /* the wires' snap */
+        v->snap_mul = jo_decay_mul(xmap(crack, 0.018f, 0.04f));
+        v->sweep_g = jo_svf_g(xmap(bright, 3000.0f, 7000.0f));
+        v->click = lmap(crack, 0.15f, 0.9f) * hard * hard;  /* the stick's crack */
+        v->click_mul = jo_decay_mul(0.0015f);
+        v->drive = gh ? 1.0f : 1.0f + 5.0f * m3;
+        v->outgain = (gh ? 0.9f : 0.7f) * g / jo_tanh(v->drive);
         break;
     }
-    case JD_GHOST: { /* TONE bandpass, SNAP transient, DECAY; SWING is the sequencer's (ghost placement) */
-        v->bright_g = jo_svf_g(xmap(m0, 600.0f, 3200.0f) * tune);
-        v->res = 0.55f;
-        v->tone_mix = 0.0f;
-        v->noise_mix = 1.0f;
-        v->amp = 0.0f;
-        v->amp_mul = 0.0f;
-        v->amp2 = 1.0f;
-        v->amp2_mul = jo_decay_mul(xmap(m2, 0.02f, 0.14f) * (0.6f + 0.4f * vel));
-        v->click = lmap(m1, 0.0f, 0.7f);
-        v->click_mul = jo_decay_mul(0.003f);
-        v->outgain = 1.2f * g;
-        break;
-    }
-    case JD_HATS: { /* METAL mix + spread, BRIGHT high-pass, LENGTH, HUMAN (decay and level vary per hit) */
-        float human = m3 * jo_rng_bi(&v->rng);
+    case JD_HATS: { /* METAL mix + spread (low: noise, a shaker; high: metal), BRIGHT high-pass, LENGTH, HUMAN */
+        float human = m3 * jo_rng_bi(&v->rng), hard = 0.5f + 0.5f * jo_clampf(vel, 0.0f, 1.0f);
         float base = xmap(0.5f, 300.0f, 520.0f) * tune * (1.0f + 0.15f * (m0 - 0.5f));
-        float len = xmap(m2, 0.015f, 0.12f) * (open ? 5.0f : 1.0f) * (1.0f + 0.25f * human);
+        float len = xmap(m2, 0.012f, 0.09f) * (open ? 4.5f : 1.0f) * (0.7f + 0.3f * hard) * (1.0f + 0.25f * human);
         for (i = 0; i < 6u; i++)
             v->inc[i] = base * HAT_RATIO[i] * (1.0f + m0 * 0.07f * (float)i) * JO_INV_SR;
-        v->tone_mix = lmap(m0, 0.25f, 1.0f);
-        v->noise_mix = 1.0f - 0.6f * m0;
-        v->bright_g = jo_svf_g(xmap(m1, 4500.0f, 11000.0f));
+        v->tone_mix = 0.85f * m0;
+        v->noise_mix = 1.0f - 0.55f * m0;
+        v->bright_g = jo_svf_g(xmap(m1, 5000.0f, 11500.0f) * (0.8f + 0.2f * hard));
         v->res = 0.3f;
         v->amp = 0.0f;
         v->amp_mul = 0.0f;
@@ -151,7 +157,7 @@ void jd_trigger(jd_voice_t *v, const jd_sound_t *s, float vel, int open)
         v->fsweep_mul = jo_decay_mul(0.04f);
         v->tone_mix = var == JD_PERC_SHAKER ? 0.0f : 1.0f - 0.8f * m2;
         v->noise_mix = var == JD_PERC_SHAKER ? 1.0f : m2;
-        v->bright_g = jo_svf_g(f * (var == JD_PERC_SHAKER ? 1.0f : 1.5f));
+        v->bright_g = jo_svf_g(f * (var == JD_PERC_SHAKER ? 1.0f : 1.5f) * (0.75f + 0.25f * jo_clampf(vel, 0.0f, 1.0f)));
         v->res = var == JD_PERC_CLICK ? 0.8f : 0.4f;
         v->amp = 1.0f;
         v->amp_mul = jo_decay_mul(dec);
@@ -196,33 +202,32 @@ int jd_render(jd_voice_t *v, float *out, uint32_t n)
             float body;
             v->fsweep *= v->fsweep_mul;
             v->ph[0] = jo_wrap1(v->ph[0] + f * JO_INV_SR);
+            v->ph[1] = jo_wrap1(v->ph[1] + v->inc[1]);
             body = jo_sin_turns(v->ph[0]);
-            s = (body * v->amp + jo_hp1(&v->hp, nz, 0.5f) * v->click) * v->drive;
-            s = jo_tanh(s) * v->outgain;
+            s = (body * v->amp + jo_sin_turns(v->ph[1]) * v->click + jo_hp1(&v->hp, nz, 0.5f) * v->amp2) * v->drive;
+            s = jo_tanh(s * 1.2f) * v->outgain;
             v->amp *= v->amp_mul;
             v->click *= v->click_mul;
+            v->amp2 *= v->amp2_mul;
             break;
         }
-        case JD_SNARE: {
+        case JD_SNARE:
+        case JD_GHOST: {
             float f = v->f0 + v->fsweep;
-            jo_svf_out_t o;
+            jo_svf_out_t o, o2;
             float body;
             v->fsweep *= v->fsweep_mul;
             v->ph[0] = jo_wrap1(v->ph[0] + f * JO_INV_SR);
-            v->ph[1] = jo_wrap1(v->ph[1] + f * 1.59f * JO_INV_SR);
-            body = (jo_sin_turns(v->ph[0]) + 0.5f * jo_sin_turns(v->ph[1])) * v->amp * v->tone_mix;
+            v->ph[1] = jo_wrap1(v->ph[1] + f * 1.47f * JO_INV_SR);
+            body = (jo_sin_turns(v->ph[0]) + 0.45f * jo_sin_turns(v->ph[1])) * v->amp * v->tone_mix;
             o = jo_svf(&v->svf, nz, v->bright_g, v->res);
-            s = body + (o.bp + 0.6f * o.hp) * v->amp2 * v->noise_mix + o.hp * v->click;
+            o2 = jo_svf(&v->svf2, nz, v->sweep_g, 0.35f);
+            s = body + (o.bp + 0.7f * o.hp) * v->amp2 * v->noise_mix + o2.bp * v->snap * 1.6f +
+                jo_hp1(&v->hp, nz, 0.6f) * v->click;
             s = jo_tanh(s * v->drive) * v->outgain;
             v->amp *= v->amp_mul;
             v->amp2 *= v->amp2_mul;
-            v->click *= v->click_mul;
-            break;
-        }
-        case JD_GHOST: {
-            jo_svf_out_t o = jo_svf(&v->svf, nz, v->bright_g, v->res);
-            s = (o.bp * v->amp2 + o.hp * v->click) * v->outgain;
-            v->amp2 *= v->amp2_mul;
+            v->snap *= v->snap_mul;
             v->click *= v->click_mul;
             break;
         }
@@ -274,7 +279,8 @@ int jd_render(jd_voice_t *v, float *out, uint32_t n)
         out[i] += s;
     }
     /* silent once every envelope is below -80 dB */
-    if (jo_absf(v->amp) < 1e-4f && jo_absf(v->amp2) < 1e-4f && jo_absf(v->click) < 1e-4f && jo_absf(v->declick) < 1e-4f) {
+    if (jo_absf(v->amp) < 1e-4f && jo_absf(v->amp2) < 1e-4f && jo_absf(v->click) < 1e-4f && jo_absf(v->snap) < 1e-4f &&
+        jo_absf(v->declick) < 1e-4f) {
         v->active = 0;
         v->last = 0.0f;
     }

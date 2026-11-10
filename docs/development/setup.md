@@ -29,7 +29,7 @@ make -C tests                 # the engine tests (124 checks)
 make -C tests renders         # the audio-regression renders + golden hashes (WAVs in tests/build/renders)
 python3 tests/tools/test_sample_prep.py
 tools/build_all.sh            # both firmwares: host simulators, device packages, host scripts
-tools/make_site.sh 0.1.0-dev  # release packages (release/), both browser emulators and the site (release/site)
+tools/make_site.sh 0.2.0      # release packages (release/), both browser emulators and the site (release/site)
 ```
 
 `release/site` is committed; `.github/workflows/pages.yml` publishes it to GitHub Pages

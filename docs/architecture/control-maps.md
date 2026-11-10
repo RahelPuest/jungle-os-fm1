@@ -22,6 +22,17 @@ performance modes on held white keys, mutes, fills, scenes and undo on single pr
   and SNAP are always one press away; SAVE is refused while playing
 - − editing depth lives on other pages (SEQUENCE, SOUND), one tap away
 
+**0.2: one map for both, and the map on the screen.** Testers found both firmwares cryptic: the two used the same
+buttons for different things (REC was RETURN on one and PAD HOLD on the other, ENV a fill or the keyboard's part),
+and nothing on the screen said what a key did. Since 0.2:
+- the buttons mean the same on both (PLAY, REC = RETURN, ENV = FILL, LFO = MUTATE with SEL + LFO = UNDO, SEL +
+  white = scene, SAVE + white = store a scene, SEL + black = mute, SEL + PLAY = panic), and on PERFORM ALGO steps
+  through the sweetspots and PRESET snaps onto one on both;
+- a strip above the knob boxes (shared/ui/jo_ui.c `ui_strip`) shows what the three encoders and every run of keys
+  do on the page, and switches to the SEL or SAVE layer while that button is held; with SEL held the page lists the
+  SEL button combinations;
+- the header shows a countdown bar while a change waits for its bar.
+
 Evaluated against the hardware: the black keys (11) carry the discrete live choices (scenes, fills, undo) where
 fingers rest naturally between white-key holds; LEDs show state on the keys themselves (mutes lit = playing, the
 current scene lit, the queued one dim), so the screen is not needed mid-gesture.

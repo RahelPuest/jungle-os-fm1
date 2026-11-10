@@ -335,13 +335,23 @@ static void input(void)
         if (ui_held(in, B_SEL)) { ui_use(in, B_SEL); ab_cmd_panic(&eng); ab_cmd_play(&eng, 0); app_say("PANIC", "ALL NOTES OFF"); }
         else ab_cmd_play(&eng, !eng.clock.running);
     }
-    if (ui_tapped(in, B_ENV)) { ui.part = (uint8_t)((ui.part + 1u) % AB_NPARTS); app_say("KEYS PLAY", PART_NAME[ui.part]); }
-    if (ui_tapped(in, B_REC)) { ab_cmd_pad(&eng, !eng.pad_on); app_say("PAD", eng.pad_on ? "RELEASE" : "HOLD"); }
+    /* (0.2) the buttons as on Break Surgeon: REC RETURN, ENV FILL, LFO MUTATE (SEL + LFO: UNDO); PAD HOLD on SEL + REC */
+    if (ui_tapped(in, B_ENV)) {
+        int two = ui_held(in, B_SEL);
+        if (two) ui_use(in, B_SEL);
+        ab_cmd_fill(&eng, two ? 2 : 1);
+        app_say(two ? "FILL 2 BARS" : "FILL 1 BAR", "BASS ROLLS");
+    }
+    if (ui_tapped(in, B_REC)) {
+        if (ui_held(in, B_SEL)) { ui_use(in, B_SEL); ab_cmd_pad(&eng, !eng.pad_on); app_say("PAD", eng.pad_on ? "RELEASE" : "HOLD"); }
+        else { ab_cmd_return(&eng); app_say("RETURN", "SNAP, MUTATION OFF"); }
+    }
     if (ui_tapped(in, B_LFO)) {
-        if (ui_held(in, B_SEL)) { ui_use(in, B_SEL); app_say("REVERT", ab_revert(&eng) ? "NOTHING TO REVERT" : "LAST MUTATION UNDONE"); }
-        else { ab_mutate(&eng, ui.mutate_radius, ui.mutate_seed++); app_say("MUTATE", "SEL+LFO: REVERT"); }
+        if (ui_held(in, B_SEL)) { ui_use(in, B_SEL); app_say("UNDO", ab_revert(&eng) ? "NOTHING TO UNDO" : "LAST MUTATION UNDONE"); }
+        else { ab_mutate(&eng, ui.mutate_radius, ui.mutate_seed++); app_say("MUTATE", "SEL+LFO: UNDO"); }
     }
     if (ui_tapped(in, B_SAVE)) save_all();
+    if (ui_pressed(in, B_SEL) || ui_pressed(in, B_SAVE) || (in->btn_up & (1u << B_SEL | 1u << B_SAVE))) ui.redraw = 1;
     if (ui_pressed(in, B_OCTDN)) set.octave = (int8_t)jo_clampi(set.octave - 1, -2, 2), ui.redraw = 1;
     if (ui_pressed(in, B_OCTUP)) set.octave = (int8_t)jo_clampi(set.octave + 1, -2, 2), ui.redraw = 1;
     for (k = 0; k < NKEYS; k++) {
@@ -350,7 +360,25 @@ static void input(void)
         int down = (in->key_down & bit) != 0, up = (in->key_up & bit) != 0;
         if (!down && !up) continue;
         ui.redraw = 1;
-        if (ui.page == PG_SEQ) {
+        /* on every page, as on Break Surgeon: SEL + white 1-8 queues a scene, SAVE + white 1-8 stores one,
+         * SEL + black 1-3 mutes BASS, STAB, PAD */
+        if (down && w >= 0 && w < AB_NSCENES && ui_held(in, B_SAVE)) {
+            ui_use(in, B_SAVE);
+            ab_scene_store(&eng, w);
+            dirty = 1;
+            app_say("SCENE STORED", SCENE_NAME[w]);
+            ui.key_used |= bit;
+            continue;
+        }
+        if (down && b >= 0 && b < AB_NTRACKS && ui_held(in, B_SEL)) {
+            ui_use(in, B_SEL);
+            ab_cmd_mute(&eng, b);
+            app_say((eng.seq.mute >> b) & 1u ? "UNMUTE" : "MUTE", ab_track_name[b]);
+            ui.key_used |= bit;
+            continue;
+        }
+        if (up && (ui.key_used & bit) && ui.page != PG_SEQ) { ui.key_used &= ~bit; continue; }
+        if (ui.page == PG_SEQ && !(ui_held(in, B_SEL) && down && w >= 0 && w < AB_NSCENES)) {
             if (w >= 0) {
                 if (down) { ui.held_step = (int8_t)w; ui.key_used &= ~bit; }
                 else {
@@ -376,13 +404,19 @@ static void input(void)
             ui_use(in, B_SEL);
             ab_cmd_scene(&eng, w, set.scene_quant);
             app_say(SCENE_NAME[w], QUANT_NAME[set.scene_quant]);
+            ui.key_used |= bit;
         } else
             play_key(k, down);
     }
     if ((d = plat_enc(EN_SELECT)) != 0) {
-        if (ui.page == PG_SEQ) ui.track = (uint8_t)jo_clampi(ui.track + (d > 0 ? 1 : -1), 0, AB_NTRACKS - 1);
-        else if (ui.page == PG_SOUND) eng.scale = (uint8_t)jo_clampi(eng.scale + (d > 0 ? 1 : -1), 0, JH_NSCALES - 1);
-        else ab_cmd_bpm(&eng, jo_clampf(eng.clock.bpm + 0.5f * (float)d, 60.0f, 220.0f));
+        /* SELECT: the track (SEQUENCE) or the part the keys play (PERFORM, SOUND); SEL + SELECT and elsewhere: tempo */
+        int sel = ui_held(in, B_SEL);
+        if (sel) ui_use(in, B_SEL);
+        if (ui.page == PG_SEQ && !sel) ui.track = (uint8_t)jo_clampi(ui.track + (d > 0 ? 1 : -1), 0, AB_NTRACKS - 1);
+        else if ((ui.page == PG_PERFORM || ui.page == PG_SOUND) && !sel) {
+            ui.part = (uint8_t)jo_clampi(ui.part + (d > 0 ? 1 : -1), 0, AB_NPARTS - 1);
+            app_say("KEYS PLAY", PART_NAME[ui.part]);
+        } else ab_cmd_bpm(&eng, jo_clampf(eng.clock.bpm + 0.5f * (float)d, 60.0f, 220.0f));
         dirty = 1;
         ui.redraw = 1;
     }
@@ -405,9 +439,18 @@ static void input(void)
             plat_usb_host(set.link_usb_host);
             app_say("USB", set.link_usb_host ? "HOST: LOOKING" : "DEVICE");
         } else if (ui.page == PG_PERFORM) { int n = ab_snap(&eng); app_say("SNAP", eng.fm.node[n].name); }
-        else if (ui.page == PG_SOUND) eng.root = (int8_t)jo_clampi(eng.root + (d > 0 ? 1 : -1), 28, 52);
+        else if (ui.page == PG_SOUND && ui_held(in, B_SEL)) {
+            ui_use(in, B_SEL);
+            eng.scale = (uint8_t)jo_clampi(eng.scale + (d > 0 ? 1 : -1), 0, JH_NSCALES - 1);
+            app_say("SCALE", jh_scale_name[eng.scale]);
+        } else if (ui.page == PG_SOUND) eng.root = (int8_t)jo_clampi(eng.root + (d > 0 ? 1 : -1), 28, 52);
         else if (ui.page == PG_FX) { eng.master.m.trim_db = jo_clampf(eng.master.m.trim_db + 0.5f * (float)d, -12.0f, 6.0f); jf_neuro_update(&eng.master); }
-        else if (ui.page == PG_SEQ) { ab_cmd_pattern(&eng, (eng.next_pat + AB_NPATTERNS + (d > 0 ? 1 : -1)) % AB_NPATTERNS); app_say("PATTERN", "AT THE NEXT BAR"); }
+        else if (ui.page == PG_SEQ) {
+            static const char *const PN[4] = {"P1", "P2", "P3", "P4"};
+            int p = (eng.next_pat + AB_NPATTERNS + (d > 0 ? 1 : -1)) % AB_NPATTERNS;
+            ab_cmd_pattern(&eng, p);
+            app_say(PN[p % 4], eng.clock.running ? "AT THE NEXT BAR" : "");
+        }
         dirty = 1;
         ui.redraw = 1;
     }
@@ -416,6 +459,17 @@ static void input(void)
 }
 
 /* -------------------------------------------------------------- screens --- */
+/* how far a queued pattern or scene is from landing (0..1), or -1 */
+static float pending_frac(void)
+{
+    uint32_t now = eng.clock.abs_step, rem, span;
+    if (!eng.clock.running || !(eng.next_pat != eng.cur_pat || eng.scene_pending >= 0)) return -1.0f;
+    if (!js_before(now, eng.pending_at)) return -1.0f;
+    rem = eng.pending_at - now;
+    span = rem > 32u ? 64u : rem > 16u ? 32u : 16u;
+    return 1.0f - (float)rem / (float)span;
+}
+
 static void draw_header(void)
 {
     char mid[24] = "", right[28] = "", t[8];
@@ -430,7 +484,8 @@ static void draw_header(void)
     ui_int(t, (int32_t)plat_cpu_pct());
     ui_cat(right, t);
     ui_cat(right, "%");
-    ui_header(PAGE_NAME[ui.page], mid, right, plat_cpu_pct() > 85u || plat_xruns());
+    ui_header2(ui_held(&ui.in, B_SEL) ? "SEL" : ui_held(&ui.in, B_SAVE) ? "SAVE" : PAGE_NAME[ui.page], mid, right,
+               plat_cpu_pct() > 85u || plat_xruns(), pending_frac());
 }
 
 static void draw_body(void)
@@ -441,31 +496,31 @@ static void draw_body(void)
     switch (ui.page) {
     case PG_PERFORM: {
         const char *nn = eng.explore_node >= 0 ? eng.fm.node[eng.explore_node].name : ab_node_name(&eng);
-        cv_text(6, 2, &FONT_L, nn, C_HI);
+        cv_text(6, 2, &FONT_M, nn, C_HI);
         t[0] = 0;
-        if (eng.mutated) ui_cat(t, "MUTATED  ");
-        if (eng.explore_node >= 0) ui_cat(t, "EXPLORE  ");
-        if (eng.fm.node[eng.fv.near].review == JG_UNREVIEWED) ui_cat(t, "UNREVIEWED");
-        cv_text(6, 36, &FONT_XS, t, C_GRAY);
+        if (eng.mutated) ui_cat(t, "MUTATED (SEL+LFO: UNDO)  ");
+        if (eng.explore_node >= 0) ui_cat(t, "EXPLORING");
+        if (eng.fill_on) ui_cat(t, "  FILL");
+        cv_text(6, 28, &FONT_XS, t, C_GRAY);
         /* the path, nodes as ticks, the morph as a marker */
         for (i = 0; i < eng.fm.npath; i++) {
             int32_t x = 10 + (int32_t)(220.0f * jg_path_t(&eng.fm, i));
-            cv_rect(x - 1, 56, 3, 10, eng.fm.path[i] == eng.fv.near ? C_WHITE : C_DIM);
+            cv_rect(x - 1, 46, 3, 10, eng.fm.path[i] == eng.fv.near ? C_WHITE : C_DIM);
         }
-        cv_rect(10, 60, 220, 2, C_LINE);
-        cv_rect(10 + (int32_t)(220.0f * eng.morph_s) - 2, 52, 5, 18, C_HI);
-        t[0] = 0; ui_cat(t, "KEYS "); ui_cat(t, PART_NAME[ui.part]); ui_cat(t, "  OCT ");
+        cv_rect(10, 50, 220, 2, C_LINE);
+        cv_rect(10 + (int32_t)(220.0f * eng.morph_s) - 2, 42, 5, 18, C_HI);
+        t[0] = 0; ui_cat(t, "KEYS PLAY "); ui_cat(t, PART_NAME[ui.part]); ui_cat(t, "  OCT ");
         ui_int(v, set.octave); ui_cat(t, v);
-        cv_text(6, 78, &FONT_B, t, C_AMB);
+        cv_text(6, 64, &FONT_B, t, C_AMB);
         t[0] = 0; ui_cat(t, eng.pad_on ? "PAD HOLD  " : "PAD OFF  "); ui_cat(t, eng.scene_cur >= 0 ? SCENE_NAME[eng.scene_cur] : "");
         if (eng.scene_pending >= 0) { ui_cat(t, " > "); ui_cat(t, SCENE_NAME[eng.scene_pending]); }
-        cv_text(6, 98, &FONT_S, t, C_GRAY);
-        cv_text(6, 120, &FONT_XS, "DUCK", C_GRAY);
-        ui_meter(36, 124, 60, 1.0f - eng.b_duck[0], C_AMB);
-        cv_text(104, 120, &FONT_XS, "OUT", C_GRAY);
-        ui_meter(126, 124, 70, eng.peak, C_HI);
+        cv_text(6, 82, &FONT_S, t, C_GRAY);
+        cv_text(6, 99, &FONT_XS, "DUCK", C_GRAY);
+        ui_meter(36, 104, 60, 1.0f - eng.b_duck[0], C_AMB);
+        cv_text(104, 99, &FONT_XS, "OUT", C_GRAY);
+        ui_meter(126, 104, 70, eng.peak, C_HI);
         eng.peak *= 0.6f;
-        cv_text(202, 120, &FONT_XS, jl_alive(&eng.link, eng.ms) ? "LINK" : "SOLO", jl_alive(&eng.link, eng.ms) ? C_HI : C_GRAY);
+        cv_text(202, 99, &FONT_XS, jl_alive(&eng.link, eng.ms) ? "LINK" : "SOLO", jl_alive(&eng.link, eng.ms) ? C_HI : C_GRAY);
         break;
     }
     case PG_SEQ:
@@ -479,8 +534,9 @@ static void draw_body(void)
                 on[s] = s >= tr->len ? 0 : !(st->flags & JS_ON) ? 0 : st->flags & JS_SLIDE ? 3 : st->flags & JS_ACCENT ? 2 : 1;
             }
             if (eng.clock.running) play = (int)((eng.seq.pos[i] + tr->len - 1u) % (tr->len ? tr->len : 1u));
-            cv_text(2, 4 + (int32_t)i * 34, &FONT_XS, ab_track_name[i], i == ui.track ? C_WHITE : C_GRAY);
-            ui_steps(18 + (int32_t)i * 34, 12, on, play < 16 ? play : -1, i == ui.track ? ui.held_step : -1);
+            cv_text(2, 0 + (int32_t)i * 30, &FONT_XS, ab_track_name[i], i == ui.track ? C_WHITE : (eng.seq.mute >> i) & 1u ? C_DIM : C_GRAY);
+            if ((eng.seq.mute >> i) & 1u) cv_text(60, (int32_t)i * 30, &FONT_XS, "MUTED", RGB(232, 76, 60));
+            ui_steps(16 + (int32_t)i * 30, 9, on, play < 16 ? play : -1, i == ui.track ? ui.held_step : -1);
         }
         if (ui.held_step >= 0) {
             const js_step_t *st = &eng.pat[eng.cur_pat].t[ui.track].s[ui.held_step];
@@ -490,11 +546,11 @@ static void draw_body(void)
             else { ui_cat(t, "DEGREE "); ui_int(v, st->data + 1); ui_cat(t, v); }
             if (st->flags & JS_SLIDE) ui_cat(t, " SLIDE");
             if (st->flags & JS_ACCENT) ui_cat(t, " ACC");
-            cv_text(6, 124, &FONT_B, t, C_WHITE);
+            cv_text(6, 96, &FONT_B, t, C_WHITE);
         } else {
             t[0] = 0; ui_cat(t, "PATTERN "); ui_int(v, eng.cur_pat + 1); ui_cat(t, v);
             if (eng.next_pat != eng.cur_pat) { ui_cat(t, " > "); ui_int(v, eng.next_pat + 1); ui_cat(t, v); }
-            cv_text(6, 124, &FONT_S, t, C_GRAY);
+            cv_text(6, 96, &FONT_S, t, C_GRAY);
         }
         break;
     case PG_SOUND:
@@ -503,14 +559,13 @@ static void draw_body(void)
         else if (ui.part == AB_PART_BASS) cv_text(90, 8, &FONT_B, eng.fv.phys[JN_P_MODEL] > 0.5f ? "REESE MATRIX" : "FM CREATURE", C_AMB);
         t[0] = 0; ui_cat(t, "KEY "); ui_cat(t, NOTE_NAME[(eng.root % 12 + 12) % 12]); ui_cat(t, " "); ui_cat(t, jh_scale_name[eng.scale]);
         ui_cat(t, "  CHORD "); ui_cat(t, jh_chord_name[eng.chord]);
-        cv_text(6, 36, &FONT_S, t, C_GRAY);
+        cv_text(6, 30, &FONT_S, t, C_GRAY);
         if (ui.part == AB_PART_BASS)
             for (i = 0; i < JN_NPARAMS; i++) { /* the patch as the graph gives it now */
-                int32_t x = 6 + (int32_t)(i % 3u) * 78, y = 56 + (int32_t)(i / 3u) * 16;
+                int32_t x = 6 + (int32_t)(i % 3u) * 78, y = 50 + (int32_t)(i / 3u) * 15;
                 cv_text(x, y, &FONT_XS, jn_param_name[i], C_DIM);
                 ui_meter(x + 42, y + 5, 30, eng.fv.norm[i], C_AMB);
             }
-        else cv_text(6, 60, &FONT_XS, "SELECT: SCALE  ALGO: CHORD/MODEL  PRESET: ROOT", C_DIM);
         break;
     case PG_FX:
         cv_text(6, 2, &FONT_M, "NEURO PRESSURE", C_HI);
@@ -522,39 +577,90 @@ static void draw_body(void)
         t[0] = 0; ui_cat(t, "GUARD HITS "); ui_int(v, (int32_t)eng.master.guard.hits); ui_cat(t, v);
         ui_cat(t, "  TRIM "); ui_fix1(v, eng.master.m.trim_db); ui_cat(t, v);
         cv_text(6, 80, &FONT_S, t, C_GRAY);
-        cv_text(6, 104, &FONT_XS, "THE SUB STAYS MONO AND CLEAN: WIDTH ABOVE 140 HZ", C_DIM);
+        cv_text(6, 100, &FONT_XS, "THE SUB STAYS MONO AND CLEAN", C_DIM);
         break;
     case PG_SCENE:
         for (i = 0; i < AB_NSCENES; i++) {
-            int32_t x = 4 + (int32_t)(i % 4u) * 59, y = 6 + (int32_t)(i / 4u) * 50;
+            int32_t x = 4 + (int32_t)(i % 4u) * 59, y = 4 + (int32_t)(i / 4u) * 48;
             int cur = (int)i == eng.scene_cur, pend = (int)i == eng.scene_pending;
             cv_rect(x, y, 55, 44, cur ? C_HI : pend ? C_DIM : C_LINE);
             cv_text(x + 3, y + 4, &FONT_XS, SCENE_NAME[i], cur ? C_BLACK : C_WHITE);
+            cv_text(x + 3, y + 26, &FONT_XS, eng.scene[i].used ? "" : "EMPTY", C_GRAY);
         }
-        cv_text(6, 112, &FONT_XS, "WHITE: QUEUE  SAVE+WHITE: STORE  SEL+WHITE: ANY PAGE", C_DIM);
         break;
     default:
         t[0] = 0; ui_cat(t, "CPU "); ui_int(v, (int32_t)plat_cpu_pct()); ui_cat(t, v); ui_cat(t, "%  XRUNS "); ui_int(v, (int32_t)plat_xruns()); ui_cat(t, v);
-        cv_text(6, 4, &FONT_S, t, C_HI);
+        cv_text(6, 2, &FONT_S, t, C_HI);
         t[0] = 0; ui_cat(t, "LINK CH "); ui_int(v, eng.link.channel + 1); ui_cat(t, v);
         ui_cat(t, jl_alive(&eng.link, eng.ms) ? "  PEER OK" : "  NO PEER");
-        cv_text(6, 24, &FONT_S, t, C_GRAY);
-        t[0] = 0; ui_cat(t, "LINK KICKS "); ui_int(v, (int32_t)eng.link_kicks); ui_cat(t, v);
-        cv_text(6, 42, &FONT_S, t, C_GRAY);
+        ui_cat(t, "  KICKS "); ui_int(v, (int32_t)eng.link_kicks); ui_cat(t, v);
+        cv_text(6, 18, &FONT_S, t, C_GRAY);
         t[0] = 0; ui_cat(t, "STORE "); ui_cat(t, load_report ? "DEFAULTS USED" : "OK"); ui_cat(t, dirty ? "  UNSAVED" : "");
-        cv_text(6, 60, &FONT_S, t, load_report ? C_WHITE : C_GRAY);
+        cv_text(6, 34, &FONT_S, t, load_report ? C_WHITE : C_GRAY);
         t[0] = 0; ui_cat(t, "QUEUE DROPS "); ui_int(v, (int32_t)eng.q.dropped); ui_cat(t, v);
-        cv_text(6, 78, &FONT_S, t, C_GRAY);
+        cv_text(6, 50, &FONT_S, t, C_GRAY);
         {
             static const char *const UH[3] = {"DEVICE", "HOST: LOOKING", "HOST: CONNECTED"};
             int st = plat_usb_host_state();
             t[0] = 0; ui_cat(t, "USB "); ui_cat(t, UH[st >= 0 && st <= 2 ? st : 0]);
-            cv_text(6, 96, &FONT_S, t, st == USBH_CONNECTED ? C_HI : C_GRAY);
+            cv_text(6, 66, &FONT_S, t, st == USBH_CONNECTED ? C_HI : C_GRAY);
         }
-        cv_text(6, 120, &FONT_XS, "PRESET: USB HOST ON / OFF", C_DIM);
+        { /* the sweetspots' state (docs/development/sweetspots.md): none is certified by listening yet */
+            uint32_t un = 0;
+            for (i = 0; i < eng.fm.nnodes; i++) un += eng.fm.node[i].review == JG_UNREVIEWED;
+            t[0] = 0; ui_cat(t, "SWEETSPOTS "); ui_int(v, (int32_t)un); ui_cat(t, v); ui_cat(t, " UNREVIEWED");
+            cv_text(6, 82, &FONT_S, t, C_GRAY);
+        }
         break;
     }
+    if (ui_held(&ui.in, B_SEL)) {
+        cv_rect(0, 82, 240, 33, C_BLACK);
+        cv_rect(0, 82, 240, 1, C_HI);
+        cv_text(4, 86, &FONT_T, "SEL + PLAY: PANIC    SEL + ENV: FILL 2 BARS", C_WHITE);
+        cv_text(4, 99, &FONT_T, "SEL + LFO: UNDO   SEL + REC: PAD HOLD", C_WHITE);
+    }
     cv_blit(0, UI_BODY_Y);
+}
+
+/* the strip: the encoders and the keys on this page, or with SEL / SAVE held */
+static void draw_strip(void)
+{
+    ui_kg_t g[6];
+    const char *enc[3] = {0, 0, 0};
+    uint32_t n = 0;
+    int layer = ui_held(&ui.in, B_SAVE) ? 2 : ui_held(&ui.in, B_SEL) ? 1 : 0;
+    static const char *const PLAYS[AB_NPARTS] = {"PLAY THE BASS (AND ITS SUB)", "PLAY STAB CHORDS", "PLAY PAD CHORDS"};
+    if (layer == 2) {
+        g[n++] = (ui_kg_t)UI_W(0, 7, "STORE THE SCENE HERE (1-8)");
+    } else if (layer == 1) {
+        g[n++] = (ui_kg_t)UI_W(0, 7, "QUEUE SCENE 1-8");
+        g[n++] = (ui_kg_t)UI_B(0, 2, "MUTE B S P");
+        enc[0] = ui.page == PG_PERFORM || ui.page == PG_SOUND || ui.page == PG_SEQ ? "TEMPO" : 0;
+        enc[2] = ui.page == PG_SOUND ? "SCALE" : 0;
+    } else {
+        switch (ui.page) {
+        case PG_SEQ:
+            g[n++] = (ui_kg_t)UI_W(0, 15, ui.held_step >= 0 ? "TURN K1-K4: NOTE VEL MORPH BITE" : "STEPS: TAP ON/OFF, HOLD + KNOB EDITS");
+            g[n++] = (ui_kg_t)UI_B(0, 2, "TRACKS");
+            if (ui.held_step >= 0) g[n++] = (ui_kg_t)UI_B(3, 4, "ACC/SLIDE");
+            g[n++] = (ui_kg_t)UI_B(10, 10, "MUTE");
+            enc[0] = "TRACK"; enc[1] = ui.held_step >= 0 ? "OCTAVE" : 0; enc[2] = "PATTERN";
+            break;
+        case PG_SCENE:
+            g[n++] = (ui_kg_t)UI_W(0, 7, "QUEUE SCENE 1-8");
+            enc[0] = "TEMPO";
+            break;
+        default:
+            g[n++] = (ui_kg_t)UI_W(0, 15, PLAYS[ui.part % AB_NPARTS]);
+            g[n++] = (ui_kg_t)UI_B(0, 10, "(BLACK KEYS PLAY TOO)");
+            if (ui.page == PG_PERFORM) { enc[0] = "PART"; enc[1] = "EXPLORE"; enc[2] = "SNAP"; }
+            else if (ui.page == PG_SOUND) { enc[0] = "PART"; enc[1] = ui.part == AB_PART_STAB ? "MODEL" : "CHORD"; enc[2] = "ROOT"; }
+            else if (ui.page == PG_FX) { enc[0] = "TEMPO"; enc[2] = "TRIM"; }
+            else { enc[0] = "TEMPO"; enc[2] = "USB HOST"; }
+            break;
+        }
+    }
+    ui_strip(enc, g, n, layer);
 }
 
 static void draw_footer(void)
@@ -671,5 +777,6 @@ void app_frame(void)
     ui.redraw = 0;
     draw_header();
     draw_body();
+    draw_strip();
     draw_footer();
 }

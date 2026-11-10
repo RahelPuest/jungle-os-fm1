@@ -76,57 +76,91 @@ void jb_slice_even(jb_break_t *b, uint32_t n)
 }
 
 /* ------------------------------------------------------------ test break --- */
-/* one bar of 16ths at 170 BPM, an original pattern: K . . . S . . k . . K . S . . g  plus hats */
+/* one bar of 16ths at 170 BPM, an original two-step groove in the jungle manner (not a copy of a recorded break):
+ *   K . h . S . h g h . K h S . h g   K kick, S snare, g ghost snare, h hat; a shaker on every 8th under it
+ * played as a drummer would: ghosts soft and a little late, the hats' offbeats accented, every hit's velocity
+ * varied a little; then a small room (early reflections that feed back), a sampler's 12 bits at 22 kHz. */
 #define TB_BPM 170.0f
 uint32_t jb_testbreak_frames(uint32_t rate) { return (uint32_t)((float)rate * 60.0f / TB_BPM * 4.0f); }
 
+static const char TB_PAT[] = "K.h.S.hgh.KhS.hg";
+
 void jb_testbreak_make(jb_break_t *b, int16_t *buf, uint32_t rate)
 {
-    static const char PAT[] = "K..hS.hk.hK.S.hg"; /* K kick, k soft kick, S snare, g ghost, h hat */
-    jd_voice_t vk, vs, vg, vh;
-    jd_sound_t sk, ss, sg, sh;
-    uint32_t frames = jb_testbreak_frames(rate), per = frames / 16u, i, s;
-    float chunk[64];
-    /* the drums run at the FM-1 rate; resample by holding (rate <= JO_SR) through a phase counter */
-    float step = (float)rate * JO_INV_SR, acc = 0.0f;
-    uint32_t w = 0;
-    jd_voice_init(&vk, JD_KICK, 1);
-    jd_voice_init(&vs, JD_SNARE, 2);
-    jd_voice_init(&vg, JD_GHOST, 3);
-    jd_voice_init(&vh, JD_HATS, 4);
-    jd_sound_default(&sk, JD_KICK);
-    jd_sound_default(&ss, JD_SNARE);
-    jd_sound_default(&sg, JD_GHOST);
-    jd_sound_default(&sh, JD_HATS);
-    sk.m[0] = 0.3f; ss.m[2] = 0.45f; sh.m[1] = 0.4f; /* a slightly dusty, roomy kit */
-    for (s = 0; s < 16u && w < frames; s++) {
-        uint32_t end = (s + 1u) * per, src_n = (uint32_t)((float)per / step) + 2u, done = 0;
-        switch (PAT[s]) {
-        case 'K': jd_trigger(&vk, &sk, 1.0f, 0); break;
-        case 'k': jd_trigger(&vk, &sk, 0.6f, 0); break;
-        case 'S': jd_trigger(&vs, &ss, 1.0f, 0); break;
-        case 'g': jd_trigger(&vg, &sg, 0.7f, 0); break;
-        case 'h': jd_trigger(&vh, &sh, 0.6f, 0); break;
+    enum { V_K, V_S, V_G, V_H, V_SH, NV };
+    jd_voice_t v[NV];
+    jd_sound_t snd[NV];
+    float chunk[32];
+    /* the drums run at the FM-1 rate; resampled by holding (rate <= JO_SR) through a phase counter */
+    float step = (float)rate * JO_INV_SR, acc = 0.0f, step_src = 60.0f / TB_BPM / 4.0f * JO_SR;
+    uint32_t frames = jb_testbreak_frames(rate), w = 0, src = 0, i, s, k;
+    struct { uint32_t at; uint8_t voice; float vel; } ev[40];
+    uint32_t nev = 0, next = 0;
+    jo_rng_t rng;
+    static const uint8_t MODEL[NV] = {JD_KICK, JD_SNARE, JD_GHOST, JD_HATS, JD_HATS};
+    jo_rng_seed(&rng, 170u);
+    for (k = 0; k < NV; k++) {
+        jd_voice_init(&v[k], MODEL[k], k + 1u);
+        jd_sound_default(&snd[k], MODEL[k]);
+    }
+    snd[V_K].m[0] = 0.4f; snd[V_K].m[1] = 0.5f;                       /* a rounder kick than the synth track's */
+    snd[V_S].m[0] = 0.6f; snd[V_S].m[2] = 0.5f; snd[V_S].tune = -1.0f; /* a fuller, longer snare */
+    snd[V_H].m[0] = 0.35f; snd[V_H].m[1] = 0.45f;
+    snd[V_SH].m[0] = 0.0f; snd[V_SH].m[1] = 0.6f; snd[V_SH].m[2] = 0.2f; /* the shaker: noise only */
+    snd[V_SH].level = 0.35f;
+    /* the events, in source samples */
+    for (s = 0; s < 16u; s++) {
+        uint32_t at = (uint32_t)((float)s * step_src);
+        float hum = 0.92f + 0.08f * jo_rng_bi(&rng);
+        switch (TB_PAT[s]) {
+        case 'K': ev[nev].voice = V_K; ev[nev].vel = (s == 0 ? 1.0f : 0.9f) * hum; ev[nev++].at = at; break;
+        case 'S': ev[nev].voice = V_S; ev[nev].vel = 1.0f * hum; ev[nev++].at = at; break;
+        case 'g': ev[nev].voice = V_G; ev[nev].vel = (0.55f + 0.2f * jo_rng_bi(&rng)); ev[nev++].at = at + (uint32_t)(0.009f * JO_SR); break;
+        case 'h': ev[nev].voice = V_H; ev[nev].vel = ((s & 3u) == 2u ? 0.85f : 0.55f) * hum; ev[nev++].at = at; break;
         default: break;
         }
-        if (!(s & 1u) && PAT[s] != 'h') jd_trigger(&vh, &sh, 0.35f, 0); /* quiet 8th hats under everything */
-        while (done < src_n && w < end) {
-            uint32_t n = src_n - done < 64u ? src_n - done : 64u;
-            for (i = 0; i < n; i++) chunk[i] = 0.0f;
-            jd_render(&vk, chunk, n);
-            jd_render(&vs, chunk, n);
-            jd_render(&vg, chunk, n);
-            jd_render(&vh, chunk, n);
-            for (i = 0; i < n && w < end; i++) {
-                acc += step;
-                if (acc >= 1.0f) {
-                    acc -= 1.0f;
-                    buf[w++] = (int16_t)(jo_softclip(chunk[i] * 0.7f) * 32000.0f);
-                }
-            }
-            done += n;
+        if (!(s & 1u)) { ev[nev].voice = V_SH; ev[nev].vel = ((s & 3u) == 2u ? 0.9f : 0.5f) * hum; ev[nev++].at = at + 40u; }
+    }
+    /* (in order of time: the shaker's 40-sample lag and the ghosts' 9 ms keep them after their step's hit) */
+    for (i = 1; i < nev; i++)
+        for (k = i; k > 0u && ev[k - 1u].at > ev[k].at; k--) {
+            uint32_t ta = ev[k].at; uint8_t tv = ev[k].voice; float tl = ev[k].vel;
+            ev[k].at = ev[k - 1u].at, ev[k].voice = ev[k - 1u].voice, ev[k].vel = ev[k - 1u].vel;
+            ev[k - 1u].at = ta, ev[k - 1u].voice = tv, ev[k - 1u].vel = tl;
         }
-        while (w < end) buf[w++] = 0;
+    while (w < frames) {
+        uint32_t n = 32u;
+        while (next < nev && ev[next].at <= src) {
+            jd_trigger(&v[ev[next].voice], &snd[ev[next].voice], ev[next].vel, 0);
+            next++;
+        }
+        if (next < nev && ev[next].at - src < n) n = ev[next].at - src;
+        if (n == 0u) n = 1u;
+        for (i = 0; i < n; i++) chunk[i] = 0.0f;
+        for (k = 0; k < NV; k++) jd_render(&v[k], chunk, n);
+        for (i = 0; i < n && w < frames; i++) {
+            acc += step;
+            if (acc >= 1.0f) {
+                acc -= 1.0f;
+                buf[w++] = (int16_t)(jo_softclip(chunk[i] * 0.62f) * 32000.0f);
+            }
+        }
+        src += n;
+    }
+    /* the room: early reflections at 7-31 ms that feed back (each reads what is already reflected), damped by
+     * averaging two neighbours; the gains sum to 0.62 (stable), the tail about 0.25 s */
+    {
+        static const float RT_MS[5] = {7.0f, 11.0f, 17.0f, 23.0f, 31.0f};
+        static const float RG[5] = {0.18f, 0.15f, 0.12f, 0.1f, 0.07f};
+        uint32_t d[5];
+        for (k = 0; k < 5u; k++) d[k] = (uint32_t)(RT_MS[k] * 0.001f * (float)rate);
+        for (i = d[4] + 1u; i < frames; i++) {
+            float y = (float)buf[i];
+            for (k = 0; k < 5u; k++) y += RG[k] * 0.5f * ((float)buf[i - d[k]] + (float)buf[i - d[k] - 1u]);
+            /* the sampler: 12 bits, a soft ceiling */
+            y = jo_softclip(y * (1.0f / 32000.0f)) * 32000.0f;
+            buf[i] = (int16_t)(jo_floorf(y * (1.0f / 16.0f) + 0.5f) * 16.0f);
+        }
     }
     b->pcm = buf;
     b->frames = frames;
@@ -137,8 +171,8 @@ void jb_testbreak_make(jb_break_t *b, int16_t *buf, uint32_t rate)
     b->name[16] = 0;
     jb_slice_even(b, 16);
     for (s = 0; s < 16u; s++)
-        b->cls[s] = PAT[s] == 'K' || PAT[s] == 'k' ? JB_CLASS_KICK : PAT[s] == 'S' ? JB_CLASS_SNARE
-                    : PAT[s] == 'h' ? JB_CLASS_HAT : PAT[s] == 'g' ? JB_CLASS_OTHER : JB_CLASS_NONE;
+        b->cls[s] = TB_PAT[s] == 'K' ? JB_CLASS_KICK : TB_PAT[s] == 'S' ? JB_CLASS_SNARE
+                    : TB_PAT[s] == 'h' ? JB_CLASS_HAT : TB_PAT[s] == 'g' ? JB_CLASS_OTHER : JB_CLASS_NONE;
 }
 
 /* ---------------------------------------------------------------- player --- */

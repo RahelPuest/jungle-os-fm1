@@ -65,23 +65,28 @@ void jf_guard2(jf_guard_t *g, float *l, float *r)
 }
 
 /* -------------------------------------------------------------- drum bus --- */
+/* the grit's low-pass: 18 kHz (none) down to 10 kHz */
+static float xfreq_lerp(float g) { return 18000.0f * jo_exp2f(-0.85f * g); }
+
 const char *const jf_drum_preset_name[JF_DRUM_NPRESETS] = {"CLEAN JUNGLE", "ROLLING BREAKS", "TIGHT NEURO",
                                                            "CRUSHED AMEN", "INDUSTRIAL"};
 
 void jf_drum_preset(jf_drum_macros_t *m, int preset)
 {
-    static const float P[JF_DRUM_NPRESETS][4] = {
-        {0.35f, 0.0f, 0.25f, 0.2f},  /* clean jungle: open, light glue */
-        {0.45f, 0.1f, 0.5f, 0.4f},   /* rolling breaks: glued, a little dirt */
-        {0.75f, 0.05f, 0.45f, 0.6f}, /* tight neuro: hard transients, dense */
-        {0.5f, 0.65f, 0.55f, 0.65f}, /* crushed: the parallel crush up */
-        {0.6f, 0.45f, 0.75f, 0.9f},  /* industrial: everything pushed */
+    /* PUNCH, CRUSH (below 0.4: sampler grit; above: the parallel crush), GLUE, PRESSURE, ROOM */
+    static const float P[JF_DRUM_NPRESETS][5] = {
+        {0.4f, 0.2f, 0.35f, 0.3f, 0.35f},   /* clean jungle: open, a sampler's grit, a room */
+        {0.45f, 0.3f, 0.6f, 0.6f, 0.3f},   /* rolling breaks: glued, gritty, a room */
+        {0.75f, 0.1f, 0.55f, 0.65f, 0.15f},  /* tight neuro: hard transients, dense, dry */
+        {0.5f, 0.75f, 0.55f, 0.65f, 0.25f}, /* crushed: the parallel crush up */
+        {0.6f, 0.55f, 0.75f, 0.9f, 0.4f},   /* industrial: everything pushed, a bigger room */
     };
     int p = preset < 0 || preset >= JF_DRUM_NPRESETS ? 0 : preset;
     m->punch = P[p][0];
     m->crush = P[p][1];
     m->glue = P[p][2];
     m->pressure = P[p][3];
+    m->room = P[p][4];
     m->trim_db = 0.0f;
 }
 
@@ -95,31 +100,73 @@ void jf_drum_init(jf_drum_bus_t *b)
     jf_drum_update(b);
 }
 
+void jf_drum_room_buf(jf_drum_bus_t *b, int16_t *buf)
+{
+    b->has_room = buf != 0;
+    if (buf) {
+        jf_verb_init(&b->room, buf);
+        jf_verb_set(&b->room, 0.22f, 0.42f, 6500.0f); /* a small, bright-ish room: ~12-24 ms lines */
+    }
+}
+
 void jf_drum_update(jf_drum_bus_t *b)
 {
     const jf_drum_macros_t *m = &b->m;
     float pr = jo_clampf(m->pressure, 0.0f, 1.0f), gl = jo_clampf(m->glue, 0.0f, 1.0f);
     b->tr_amt = (jo_clampf(m->punch, 0.0f, 1.0f) - 0.3f) * 2.0f; /* -0.6 (softer) .. +1.4 (harder attacks) */
-    b->crush_mix = jo_clampf(m->crush, 0.0f, 1.0f) * 0.6f;
-    b->crush_bits = 4096.0f * jo_exp2f(-8.0f * jo_clampf(m->crush, 0.0f, 1.0f)); /* 12 .. 4 bits */
-    b->crush_hold = 1.0f + 5.0f * m->crush;                                        /* sample hold factor */
+    {
+        float c = jo_clampf(m->crush, 0.0f, 1.0f), gr = jo_clampf(c * 2.5f, 0.0f, 1.0f), up = jo_clampf((c - 0.4f) / 0.6f, 0.0f, 1.0f);
+        /* the lower half: a sampler's grit in series (12 -> 10 bits, the rate held to 44 -> 26 kHz, the top darker) */
+        b->grit = gr;
+        b->grit_bits = 2048.0f * jo_exp2f(-2.0f * gr);
+        b->grit_hold = 1.0f + 0.7f * gr;
+        b->grit_k = jo_lp1_k(xfreq_lerp(gr));
+        /* the upper half: the parallel crush (12 .. 4 bits, a held rate) */
+        b->crush_mix = up * 0.6f;
+        b->crush_bits = 4096.0f * jo_exp2f(-8.0f * up);
+        b->crush_hold = 1.0f + 5.0f * up;
+    }
+    b->room_gain = 3.0f * jo_clampf(m->room, 0.0f, 1.0f);
     /* PRESSURE: saturation drive, compressor threshold and the compensating trim move together */
-    b->sat_drive = 1.0f + 4.0f * pr * pr;
+    /* (0.2) PRESSURE drives the saturation into its knee (the peaks rounded off, the body brought up); GLUE is a
+     * fast compressor (0.8-4 ms attack: it catches the hits, so the kit gets denser, not peakier) with its makeup */
+    b->sat_drive = 1.0f + 5.0f * pr;
     b->sat_comp = 1.0f / jo_tanh(b->sat_drive * 0.5f) * 0.5f;                      /* keeps a -6 dB peak level */
-    jf_comp_set(&b->comp, -6.0f - 14.0f * gl - 4.0f * pr, 1.5f + 4.0f * gl, 0.008f - 0.005f * gl,
-                0.09f + 0.08f * gl, 0.0f);
-    b->comp.makeup_db = 0.35f * (14.0f * gl + 4.0f * pr) * (1.0f - 1.0f / b->comp.ratio);
-    b->out_gain = jo_db2lin(m->trim_db - 1.5f * pr); /* the denser it gets, the less level: loudness held */
+    jf_comp_set(&b->comp, -10.0f - 14.0f * gl, 1.5f + 4.5f * gl, 0.004f - 0.0032f * gl, 0.015f + 0.015f * gl, 0.0f);
+    /* the makeup: what a -6 dBFS hit loses, given back (the bodies keep their level, the peaks run into the clip) */
+    b->comp.makeup_db = 0.9f * jo_maxf(-6.0f - b->comp.thresh_db, 0.0f) * (1.0f - 1.0f / b->comp.ratio);
+    b->out_gain = jo_db2lin(m->trim_db - 1.0f * pr); /* the denser it gets, the less level: loudness held */
     b->fast.env = b->fast.env;
 }
 
-void jf_drum_process(jf_drum_bus_t *b, float *x, uint32_t n)
+void jf_drum_process(jf_drum_bus_t *b, float *x, const float *send, uint32_t n)
 {
     uint32_t i;
     const float kfa = 0.35f, kfr = 0.0035f, ksa = 0.006f, ksr = 0.0018f; /* ~0.1/6 ms and ~4/12 ms */
     float pk = b->peak;
+    if (send && b->has_room && b->room_gain > 0.0f) { /* the room, mono, in before the bus (it is glued with the kit) */
+        float rl[64], rr[64];
+        uint32_t k, j;
+        for (k = 0; k < n; k += 64u) {
+            uint32_t m = n - k < 64u ? n - k : 64u;
+            for (j = 0; j < m; j++) rl[j] = rr[j] = 0.0f;
+            jf_verb_process(&b->room, send + k, rl, rr, m);
+            for (j = 0; j < m; j++) x[k + j] += (rl[j] + rr[j]) * 0.5f * b->room_gain;
+        }
+    }
     for (i = 0; i < n; i++) {
         float s = x[i], ef, es, tr, c, y;
+        /* the sampler's grit: held rate, fewer bits, a darker top */
+        if (b->grit > 0.0f) {
+            b->grit_ph += 1.0f;
+            if (b->grit_ph >= b->grit_hold) {
+                b->grit_ph -= b->grit_hold;
+                b->grit_held = jo_floorf(s * b->grit_bits + 0.5f) / b->grit_bits;
+            }
+            b->grit_lp += (b->grit_held - b->grit_lp) * b->grit_k;
+            b->grit_lp = jo_flush(b->grit_lp);
+            s = s + (b->grit_lp - s) * b->grit;
+        }
         /* transient contour: fast minus slow envelope = the attack; scale it */
         ef = jo_follow(&b->fast, s, kfa, kfr);
         es = jo_follow(&b->slow, s, ksa, ksr);

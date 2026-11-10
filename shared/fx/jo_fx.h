@@ -2,8 +2,11 @@
  * Copyright (C) 2026 JUNGLE OS contributors */
 /* Master processing for both instruments.
  *
- * DRUM PRESSURE (Break Surgeon):  mono drum bus -> transient contour -> parallel crush -> saturation -> glue
- *   compressor -> soft clip -> peak guard -> output trim. Macros PUNCH, CRUSH, GLUE, PRESSURE.
+ * DRUM PRESSURE (Break Surgeon):  mono drum bus + the room (a short FDN fed by each track's send) -> sampler grit
+ *   (CRUSH's lower half: 12 down to 10 bits, a darker top, a held rate) -> transient contour -> parallel crush
+ *   (CRUSH's upper half) -> saturation -> glue compressor -> soft clip -> peak guard -> output trim. Macros PUNCH,
+ *   CRUSH, GLUE, PRESSURE, and ROOM. The room goes in before the glue, so it is compressed with the kit, as a
+ *   break recorded in a room is.
  * NEURO PRESSURE (Abyss Engine):  clean sub (mono, own path) + dirty bass (high-passed above the crossover so its
  *   distortion never carries sub) + pads/stabs (stereo, sends) -> ducking on sub and bass -> width on the
  *   high-passed side of pads/stabs only (sub and bass stay centred) -> glue -> soft clip -> peak guard. Macros WEIGHT, DIRT, WIDTH, PRESSURE.
@@ -32,12 +35,26 @@ void jf_guard_init(jf_guard_t *g, float ceiling_db);
 float jf_guard(jf_guard_t *g, float x);           /* mono */
 void jf_guard2(jf_guard_t *g, float *l, float *r); /* linked stereo */
 
+/* ------------------------------------------------------- reverb (small) --- */
+/* four-line feedback delay network with damping, int16 lines; a room-to-hall space for pads and stabs */
+#define JF_VERB_TOTAL 16384u
+typedef struct {
+    int16_t *buf;                       /* JF_VERB_TOTAL samples, the app's storage */
+    uint32_t len[4], off[4], w[4];
+    float fb, damp_k, lp[4];
+    jo_onepole_t hp;
+} jf_verb_t;
+void jf_verb_init(jf_verb_t *v, int16_t *buf);
+void jf_verb_set(jf_verb_t *v, float size, float decay, float damp_hz);
+void jf_verb_process(jf_verb_t *v, const float *in, float *l, float *r, uint32_t n);
+
 /* ------------------------------------------------------------ drum bus --- */
 enum { JF_DRUM_CLEAN_JUNGLE, JF_DRUM_ROLLING, JF_DRUM_TIGHT_NEURO, JF_DRUM_CRUSHED, JF_DRUM_INDUSTRIAL, JF_DRUM_NPRESETS };
 extern const char *const jf_drum_preset_name[JF_DRUM_NPRESETS];
 typedef struct {
     float punch, crush, glue, pressure; /* the macros, 0..1 */
     float trim_db;                      /* output trim */
+    float room;                         /* the room's level, 0..1 */
 } jf_drum_macros_t;
 void jf_drum_preset(jf_drum_macros_t *m, int preset);
 
@@ -45,18 +62,22 @@ typedef struct {
     jf_drum_macros_t m;
     /* derived (jf_drum_update, at most once a block) */
     float tr_amt, crush_mix, crush_bits, crush_hold, sat_drive, sat_comp, out_gain;
+    float grit, grit_bits, grit_hold, grit_k, room_gain;
     /* state */
     jo_follow_t fast, slow;
-    float crush_ph, crush_held;
+    float crush_ph, crush_held, grit_ph, grit_held, grit_lp;
+    jf_verb_t room;                     /* active once jf_drum_room_buf gave it its lines */
+    uint8_t has_room;
     jf_comp_t comp;
     jf_guard_t guard;
     jo_dcb_t dc;
     float peak;                         /* the output peak since the last read (meter) */
 } jf_drum_bus_t;
 void jf_drum_init(jf_drum_bus_t *b);
+void jf_drum_room_buf(jf_drum_bus_t *b, int16_t *buf); /* JF_VERB_TOTAL samples: the room (0: none) */
 void jf_drum_update(jf_drum_bus_t *b);  /* after a macro change */
-/* processes n samples in place (mono) */
-void jf_drum_process(jf_drum_bus_t *b, float *x, uint32_t n);
+/* processes n samples in place (mono); send: the room's input (each track's share of it), or 0 */
+void jf_drum_process(jf_drum_bus_t *b, float *x, const float *send, uint32_t n);
 
 /* --------------------------------------------------------------- ducking --- */
 /* an envelope a trigger (a kick, from the sequencer or the link) starts: depth, attack, hold, release */
@@ -77,19 +98,6 @@ void jf_delay_init(jf_delay_t *d, int16_t *bl, int16_t *br);
 void jf_delay_set(jf_delay_t *d, float seconds, float feedback, float tone_hz);
 /* in: mono send; adds the wet signal into l, r */
 void jf_delay_process(jf_delay_t *d, const float *in, float *l, float *r, uint32_t n);
-
-/* ------------------------------------------------------- reverb (small) --- */
-/* four-line feedback delay network with damping, int16 lines; a room-to-hall space for pads and stabs */
-#define JF_VERB_TOTAL 16384u
-typedef struct {
-    int16_t *buf;                       /* JF_VERB_TOTAL samples, the app's storage */
-    uint32_t len[4], off[4], w[4];
-    float fb, damp_k, lp[4];
-    jo_onepole_t hp;
-} jf_verb_t;
-void jf_verb_init(jf_verb_t *v, int16_t *buf);
-void jf_verb_set(jf_verb_t *v, float size, float decay, float damp_hz);
-void jf_verb_process(jf_verb_t *v, const float *in, float *l, float *r, uint32_t n);
 
 /* -------------------------------------------------------- neuro master --- */
 typedef struct { float weight, dirt, width, pressure, trim_db; } jf_neuro_macros_t;

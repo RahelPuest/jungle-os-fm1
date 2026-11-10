@@ -6,15 +6,27 @@ wait 2000
 turn K1 30
 wait 1500
 shot ab_perform.png
+# SEL held: the strip and the page show the SEL layer
+press SEL
+wait 200
+shot ab_sel.png
+release SEL
+wait 200
 turn PRESET 1
 turn ALGO 1
 wait 800
-# play the stab part on the keys, then hold the pad (REC)
-tap ENV
+# play the stab part on the keys (SELECT: the part), then hold the pad (SEL + REC), a fill (ENV), RETURN (REC)
+turn SELECT 1
 tapkey w4 110
 tapkey w7 110
+press SEL
 tap REC
-wait 2000
+release SEL
+wait 1000
+tap ENV
+wait 1000
+tap REC
+wait 1000
 tap LFO
 wait 1500
 press SEL

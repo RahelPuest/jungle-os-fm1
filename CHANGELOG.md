@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.2.0 (2026-11-10): a drum & bass kit, and controls you can read off the screen
+
+Still not installed on a physical FM-1.
+
+Break Surgeon's sound
+- **Kick:** 45–75 Hz (55 Hz by default; the sub is Abyss Engine's), shorter, with a tonal beater click (1.8–3.8 kHz)
+  and a noise snap.
+- **Snare:** a tuned body with a pitch drop; the stick's crack, the wires' snap and their tail, each with its own
+  envelope.
+- **Velocity shapes the timbre** of every model, not only the level: a hard hit is brighter, with more crack and
+  click.
+- **The ghost snare** is that snare played softly. The generated ghosts sit about 8 ms late.
+- **Hats:** noise-led (shaker-like) unless METAL is up.
+- **DRUM PRESSURE**
+  - ROOM: a small FDN room fed by each track's send (snare and ghosts most, the kick almost none). It goes before
+    the glue.
+  - GRIT: CRUSH's lower half is now a serial sampler stage (12 down to 10 bits, a held rate, a darker top).
+  - GLUE is a fast compressor (0.8–4 ms attack) whose makeup holds the level, so the kit gets denser instead of
+    quieter.
+  - PRESSURE drives the saturation harder.
+  - Measured on the DROP groove, ROLLING BREAKS preset, 8 bars: about −16 dBFS RMS with a 10 ms crest of 11 dB.
+    Before: −20 dBFS and 13 dB.
+- **The built-in test break** is a new original two-step groove: ghosts soft and late, accented offbeat hats, an
+  8th shaker, a small room, 12 bits at 22 kHz.
+- **The patterns:** 174 BPM and straight; P2 ROLLER plays a break edit with a snare roll and a rolling kick.
+
+Controls (both firmwares)
+- **One map for both:**
+  - REC = RETURN; ENV = FILL (SEL + ENV: 2 bars).
+  - LFO = MUTATE, SEL + LFO = UNDO.
+  - SEL + white 1–8 = queue a scene, SAVE + white 1–8 = store one, on every page; SEL + black = mute.
+  - PERFORM: ALGO steps through the sweetspots, PRESET snaps.
+  - Abyss Engine: SELECT picks the part the keys play (was ENV), PAD HOLD is SEL + REC (was REC), and there is a fill
+    of its own.
+- **The strip:** above the knob boxes, what the three encoders and every run of keys do on the page. It changes to
+  the SEL or SAVE layer while that button is held. With SEL held, the page lists the SEL combinations.
+- **The header** shows a countdown bar while a pattern, a scene, a fill or RETURN waits for its bar. Every action
+  answers with a message (FILL 1 BAR / FROM THE NEXT BAR, MUTE KICK, P2 ROLLER / AT THE NEXT BAR …).
+- **Names:** ENERGY is now FILL AMT, CRUSH is now GRIT, REVERT is now UNDO. Abyss's UNREVIEWED moved from PERFORM to
+  SYSTEM.
+- **Break Surgeon's encoders:** SOUND PRESET is the drum's level; FX PRESET is ROOM (SEL + PRESET: trim); SEQUENCE
+  PRESET is the pattern.
+- **The manuals** start with an eight-move quick start and describe the screen.
+
+Compatibility
+- Break Surgeon's settings and scenes have a new size (the room). The first start after the update uses their
+  defaults; the patterns are kept.
+
 ## 0.1.0-dev (2026-11-10) — first vertical slices, simulator-tested
 
 Not yet installed on a physical FM-1.

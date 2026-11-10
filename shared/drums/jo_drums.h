@@ -2,7 +2,9 @@
  * Copyright (C) 2026 JUNGLE OS contributors */
 /* Break Surgeon's synthesized drums: procedural models, no sample playback. Each voice takes four curated
  * macros (0..1) and derives its physical parameters once per hit, so a parameter lock or a sweetspot morph costs
- * nothing per sample. Monophonic per track, with a de-click tail on retrigger; METAL HATS has a closed/open choke. */
+ * nothing per sample. The velocity shapes the timbre as well as the level (a harder hit is brighter, snappier,
+ * with more click), and GHOST SNARE is the snare's own drum played softly. Monophonic per track, with a de-click
+ * tail on retrigger; METAL HATS has a closed/open choke. */
 #pragma once
 #include "../dsp/jo_dsp.h"
 
@@ -27,6 +29,7 @@ typedef struct {
     float amp, amp_mul;          /* main amplitude envelope */
     float amp2, amp2_mul;        /* second envelope (noise / snap) */
     float click, click_mul;      /* transient */
+    float snap, snap_mul;        /* snare and ghost: the wires' snap (a short bright band of noise) */
     float f0, fsweep, fsweep_mul;/* body pitch: f0 + fsweep (decaying) in Hz */
     float ph[6], inc[6];         /* body / metallic oscillators */
     float tone_mix, noise_mix, drive, outgain, bright_g, res, sweep_g, sweep_mul;

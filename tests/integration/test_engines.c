@@ -6,7 +6,7 @@
 
 static bs_engine_t BS;
 static ab_engine_t AB;
-static int16_t testpcm[70000];
+static int16_t testpcm[70000], roombuf[JF_VERB_TOTAL];
 static int16_t pool[AB_POOL_SAMPLES];
 static int32_t lr[2 * 128];
 
@@ -35,6 +35,7 @@ static void bs_start(float bpm)
     memset(bar_fp, 0, sizeof bar_fp);
     memset(bar_n, 0, sizeof bar_n);
     bs_init(&BS, testpcm, 0, 0);
+    bs_set_room_buf(&BS, roombuf);
     BS.trace = trace;
     bs_cmd_bpm(&BS, bpm);
     bs_cmd_play(&BS, 1);

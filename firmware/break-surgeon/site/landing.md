@@ -4,12 +4,15 @@ BREAK SURGEON is the rhythm half of JUNGLE OS, a drum & bass live rig of two M-V
 
 ![BREAK SURGEON's PERFORM page while playing: scene DROP, rhythm CLEAN, kit JUNGLE SNAP](img/home.png "BREAK SURGEON on the FM-1's screen")
 
+New in 0.2: a drum & bass kit. The kick is short and punchy at 55 Hz with a beater click. The snare has a body, a crack, a snap and a tail, and the ghosts are that snare played softly, a little late. Every drum's tone follows how hard it is hit. DRUM PRESSURE adds a room, a sampler's 12-bit grit and a glue that makes the kit denser instead of quieter. The controls are the same as ABYSS ENGINE's, and the screen shows what every key and encoder does, also with SEL or SAVE held.
+
 Version {{VERSION}}. **Not yet tested on a physical FM-1.** It is tested in software: 124 engine checks, audio-regression renders, fm1-base's host simulator and fm1-emu, an instruction-level emulator that runs the real firmware file. Installing it is at your own risk; the installer can put M-VAVE's own firmware back. Back up first.
 
 - [Try it in the browser](emu/): the same code the FM-1 runs, with sound and Web MIDI. No FM-1 needed.
 - [Manual](manual/): every page, button and key.
 - [Install](install/): from Chrome or Edge, with the FM-1 connected by USB.
 - [Download {{PKG}}](firmware/{{PKG}}): for the command-line installer, `python3 base/tools/fm1_install.py {{PKG}}`.
+- Earlier version: [0.1.0-dev](firmware/breaksurgeon-0.1.0-dev.fwsc) (the first kit and controls).
 - [ABYSS ENGINE](../abyss-engine/), the bass half, and [JUNGLE OS](../), both together.
 - [Source code on GitHub](https://github.com/RahelPuest/jungle-os-fm1).
 

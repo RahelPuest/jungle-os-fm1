@@ -3,7 +3,7 @@
 #include "ab_engine.h"
 
 const char *const ab_track_name[AB_NTRACKS] = {"BASS", "STAB", "PAD"};
-enum { C_PLAY, C_BPM, C_NOTE, C_STAB, C_PAD, C_PATTERN, C_SCENE, C_PANIC, C_MUTE };
+enum { C_PLAY, C_BPM, C_NOTE, C_STAB, C_PAD, C_PATTERN, C_SCENE, C_PANIC, C_MUTE, C_FILL, C_RETURN };
 
 /* ----------------------------------------------------------- the graph --- */
 static const jg_param_t FMP[JN_NPARAMS] = {
@@ -419,6 +419,8 @@ void ab_cmd_pattern(ab_engine_t *e, int p) { cmd(e, C_PATTERN, (uint8_t)p, 0, 0,
 void ab_cmd_scene(ab_engine_t *e, int s, int quant) { cmd(e, C_SCENE, (uint8_t)s, (uint8_t)quant, 0, 0.0f); }
 void ab_cmd_panic(ab_engine_t *e) { cmd(e, C_PANIC, 0, 0, 0, 0.0f); }
 void ab_cmd_mute(ab_engine_t *e, int t) { cmd(e, C_MUTE, (uint8_t)t, 0, 0, 0.0f); }
+void ab_cmd_fill(ab_engine_t *e, int bars) { cmd(e, C_FILL, (uint8_t)bars, 0, 0, 0.0f); }
+void ab_cmd_return(ab_engine_t *e) { cmd(e, C_RETURN, 0, 0, 0, 0.0f); }
 
 static void transport(ab_engine_t *e, int on)
 {
@@ -433,6 +435,7 @@ static void transport(ab_engine_t *e, int on)
         jn_stab_release(&e->stab);
     }
 }
+
 
 static void do_cmd(ab_engine_t *e, const jo_cmd_t *c)
 {
@@ -486,6 +489,14 @@ static void do_cmd(ab_engine_t *e, const jo_cmd_t *c)
         e->pad_on = 0;
         break;
     case C_MUTE: e->seq.mute ^= (uint8_t)(1u << (c->a % AB_NTRACKS)); break;
+    case C_FILL: /* (0.2) a fill by hand, as the link's: the bass's rolls and octave jumps up to the bar after next */
+        e->fill_on = 1;
+        e->fill_end = next_boundary(e, JL_Q_BAR) + 16u * (c->a == 2 ? 2u : 1u);
+        break;
+    case C_RETURN: /* (0.2) back to the base: the mutation and the explore left, the fill ended, MORPH on its node */
+        e->fill_on = 0;
+        ab_snap(e);
+        break;
     default: break;
     }
 }

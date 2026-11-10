@@ -87,6 +87,7 @@ typedef struct {
     /* master */
     jf_drum_bus_t bus;
     float bus_buf[BS_BLOCK_MAX];
+    float send_buf[BS_BLOCK_MAX], tmp_buf[BS_BLOCK_MAX]; /* the room's send; one voice at a time */
     /* link (sender) */
     jl_link_t link;
     void (*midi_out)(uint32_t pkt);    /* the app's: plat_midi_send to the link's ports; 0 = none */
@@ -105,6 +106,7 @@ typedef struct {
  * bank: an installed JOB1 image (or 0) */
 void bs_init(bs_engine_t *e, int16_t *test_pcm, const uint8_t *bank, uint32_t bank_len);
 void bs_render(bs_engine_t *e, int32_t *lr, uint32_t n, float out_gain); /* the audio interrupt: 24-bit stereo */
+void bs_set_room_buf(bs_engine_t *e, int16_t *buf);  /* JF_VERB_TOTAL samples for DRUM PRESSURE's room (after bs_init) */
 void bs_render_float(bs_engine_t *e, float *mono, uint32_t n);           /* the same, mono float (tests) */
 
 /* ---- the main loop's commands (through the ring; applied at the next block) ---- */
@@ -132,4 +134,6 @@ void bs_set_rhythm(bs_engine_t *e, float t);
 void bs_set_kit(bs_engine_t *e, float t);
 void bs_set_slices(bs_engine_t *e, int n);
 void bs_fx_update(bs_engine_t *e);                           /* after a change of e->bus.m */
+void bs_snap(bs_engine_t *e);                                /* BREAK and KIT to their nearest nodes */
+const char *bs_kit_step(bs_engine_t *e, int dir);            /* KIT to the next / previous node; its name */
 int bs_load_bank(bs_engine_t *e, const uint8_t *bank, uint32_t len);

@@ -3,16 +3,20 @@
 /* JUNGLE OS screen and input helpers, shared by both firmwares. Part of each app's unity build (included by
  * app.c after fm1-base's gfx.c): it draws with fm1-base's canvas (cv_*), fonts and palette.
  *
- * Screen: 240 x 240, three bands drawn and sent separately (only when something changed):
- *   header  y   0..25   page name, the instrument's state (tempo, clock, scene, load)
- *   body    y  26..169  the page
- *   footer  y 170..239  the four macro boxes (K1..K4), names and values */
+ * Screen: 240 x 240, four bands drawn and sent separately (only when something changed):
+ *   header  y   0..25   page name, the instrument's state (tempo, clock, scene, load); a queued change's countdown
+ *   body    y  26..140  the page
+ *   strip   y 141..185  what the three encoders and the 27 keys do on this page, now (with SEL or SAVE held: what
+ *                       they do with it): the encoders' line, the black keys' labels, the keys, the white keys' labels
+ *   footer  y 186..239  the four macro boxes (K1..K4), names and values */
 
 #define UI_HEAD_H 26
 #define UI_BODY_Y 26
-#define UI_BODY_H 144
-#define UI_FOOT_Y 170
-#define UI_FOOT_H 70
+#define UI_BODY_H 115
+#define UI_STRIP_Y 141
+#define UI_STRIP_H 45
+#define UI_FOOT_Y 186
+#define UI_FOOT_H 54
 
 /* ------------------------------------------------------------ text --- */
 static void ui_cat(char *d, const char *s)
@@ -48,8 +52,9 @@ static void ui_pct(char *b, float v01)
 }
 
 /* ----------------------------------------------------------- bands --- */
-/* header: the page on the left (inverted), text on the right */
-static void ui_header(const char *page, const char *mid, const char *right, int alarm)
+/* header: the page on the left (inverted), text on the right; pending 0..1: how far a queued change (a pattern, a
+ * scene, a fill, RETURN) is from landing, drawn as a bar along the bottom (< 0: nothing queued) */
+static void ui_header2(const char *page, const char *mid, const char *right, int alarm, float pending)
 {
     int32_t w;
     cv_begin(240, UI_HEAD_H, C_BLACK);
@@ -60,7 +65,90 @@ static void ui_header(const char *page, const char *mid, const char *right, int 
     if (right) cv_text(236 - text_w(&FONT_S, right), 6, &FONT_S, right, alarm ? C_WHITE : C_GRAY);
     if (alarm) cv_rect(0, UI_HEAD_H - 2, 240, 2, RGB(232, 76, 60));
     else cv_rect(0, UI_HEAD_H - 1, 240, 1, C_LINE);
+    if (pending >= 0.0f) {
+        cv_rect(0, UI_HEAD_H - 3, 240, 3, C_LINE);
+        cv_rect(0, UI_HEAD_H - 3, (int32_t)(240.0f * jo_clampf(pending, 0.0f, 1.0f)), 3, C_WHITE);
+    }
     cv_blit(0, 0);
+}
+static void ui_header(const char *page, const char *mid, const char *right, int alarm)
+{
+    ui_header2(page, mid, right, alarm, -1.0f);
+}
+
+/* the strip: what the encoders and the keys do. A key group is a run of white keys (0..15) or of black keys (0..10)
+ * and its label; groups next to each other alternate their colour so the runs read apart */
+typedef struct {
+    uint8_t black, lo, hi;
+    const char *label;
+} ui_kg_t;
+#define UI_W(lo, hi, label) {0, (lo), (hi), (label)}
+#define UI_B(lo, hi, label) {1, (lo), (hi), (label)}
+/* the white key each black key sits right of (F3 .. G5: F# G# A# C# D# F# G# A# C# D# F#) */
+static const uint8_t UI_BLACK_AT[11] = {0, 1, 2, 4, 5, 7, 8, 9, 11, 12, 14};
+
+static void ui_label(int32_t x0, int32_t x1, int32_t y, const char *t, uint16_t c)
+{
+    int32_t w = text_w(&FONT_T, t), x = (x0 + x1 - w) / 2;
+    if (x < 1) x = 1;
+    if (x + w > 239) x = 239 - w;
+    cv_text(x, y, &FONT_T, t, c);
+}
+
+/* enc: what SELECT, ALGO and PRESET do (0: nothing); layer: 0 plain, 1 SEL held, 2 SAVE held */
+static void ui_strip(const char *const enc[3], const ui_kg_t *g, uint32_t n, int layer)
+{
+    static const char *const EN[3] = {"SELECT", "ALGO", "PRESET"};
+    uint16_t wc[16], bc[11];
+    uint32_t i, k;
+    cv_begin(240, UI_STRIP_H, C_BLACK);
+    cv_rect(0, 0, 240, 1, C_LINE);
+    /* the encoders */
+    for (i = 0; i < 3u; i++) {
+        int32_t x = 2 + (int32_t)i * 80;
+        x = cv_text(x, 2, &FONT_T, EN[i], C_DIM) + 3;
+        cv_text(x, 2, &FONT_T, enc[i] ? enc[i] : "-", enc[i] ? (layer ? C_WHITE : C_AMB) : C_DIM);
+    }
+    if (layer) { /* the layer's name, so it is clear why the strip changed */
+        const char *t = layer == 1 ? "SEL HELD" : "SAVE HELD";
+        int32_t w = text_w(&FONT_T, t) + 6;
+        cv_rect(238 - w, 13, w, 11, C_HI);
+        cv_text(241 - w, 13, &FONT_T, t, C_BLACK);
+    }
+    /* the keys' colours: a run's, alternating; none: dark */
+    for (i = 0; i < 16u; i++) wc[i] = C_LINE;
+    for (i = 0; i < 11u; i++) bc[i] = C_BLACK;
+    {
+        uint32_t nw = 0, nb = 0;
+        for (k = 0; k < n; k++) {
+            uint16_t c = (g[k].black ? nb++ : nw++) & 1u ? C_GRAY : C_AMB;
+            for (i = g[k].lo; i <= g[k].hi && i < (g[k].black ? 11u : 16u); i++) {
+                if (g[k].black) bc[i] = c;
+                else wc[i] = c;
+            }
+        }
+    }
+    /* the keys: whites 15 px apart at y 25..33, blacks over their gaps at y 25..30 */
+    for (i = 0; i < 16u; i++) cv_rect((int32_t)i * 15 + 1, 25, 13, 9, wc[i]);
+    for (i = 0; i < 11u; i++) {
+        int32_t x = (int32_t)(UI_BLACK_AT[i] + 1u) * 15 - 5;
+        cv_rect(x - 1, 24, 11, 8, C_BLACK);
+        cv_rect(x, 25, 9, 6, bc[i] == C_BLACK ? C_LINE : bc[i]);
+    }
+    /* the labels: the black runs' above the keys, the white runs' below */
+    {
+        uint32_t nw = 0, nb = 0;
+        for (k = 0; k < n; k++) {
+            uint16_t c = (g[k].black ? nb++ : nw++) & 1u ? C_GRAY : C_AMB;
+            if (!g[k].label) continue;
+            if (g[k].black)
+                ui_label((int32_t)(UI_BLACK_AT[g[k].lo] + 1u) * 15 - 6, (int32_t)(UI_BLACK_AT[g[k].hi] + 1u) * 15 + 6, 13,
+                         g[k].label, c);
+            else
+                ui_label((int32_t)g[k].lo * 15, (int32_t)(g[k].hi + 1u) * 15, 35, g[k].label, c);
+        }
+    }
+    cv_blit(0, UI_STRIP_Y);
 }
 
 /* the four macro boxes: names, a value bar, the value; hi = the box being turned now */
@@ -72,19 +160,19 @@ static void ui_macros(const char *const name[4], const float v[4], const char *c
         int32_t x = 2 + (int32_t)i * 60, w = 56, bar;
         int lit = (int)i == hi;
         char t[16];
-        cv_rect(x, 0, w, UI_FOOT_H - 4, lit ? C_LINE : C_BLACK);
+        cv_rect(x, 0, w, UI_FOOT_H - 3, lit ? C_LINE : C_BLACK);
         cv_rect(x, 0, w, 1, C_DIM);
-        cv_text(x + 3, 4, &FONT_XS, name[i] ? name[i] : "", lit ? C_WHITE : C_GRAY);
+        cv_text(x + 3, 2, &FONT_XS, name[i] ? name[i] : "", lit ? C_WHITE : C_GRAY);
         /* the bar */
-        cv_rect(x + 3, 24, w - 6, 8, C_LINE);
+        cv_rect(x + 3, 19, w - 6, 6, C_LINE);
         bar = (int32_t)((float)(w - 6) * jo_clampf(v[i], 0.0f, 1.0f) + 0.5f);
-        cv_rect(x + 3, 24, bar, 8, lit ? C_WHITE : C_HI);
+        cv_rect(x + 3, 19, bar, 6, lit ? C_WHITE : C_HI);
         if (vtext && vtext[i]) {
-            cv_text(x + 3, 38, &FONT_B, vtext[i], lit ? C_WHITE : C_AMB);
+            cv_text(x + 3, 30, &FONT_B, vtext[i], lit ? C_WHITE : C_AMB);
         } else {
             t[0] = 0;
             ui_pct(t, v[i]);
-            cv_text(x + 3, 38, &FONT_B, t, lit ? C_WHITE : C_AMB);
+            cv_text(x + 3, 30, &FONT_B, t, lit ? C_WHITE : C_AMB);
         }
     }
     cv_blit(0, UI_FOOT_Y);

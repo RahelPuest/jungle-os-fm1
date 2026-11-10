@@ -269,12 +269,14 @@ TEST(test_fx_bounds)
     float pk = 0.0f;
     int ok = 1;
     jo_rng_seed(&rng, 9);
+    static int16_t room[JF_VERB_TOTAL];
     jf_drum_init(&b);
-    b.m.punch = b.m.crush = b.m.glue = b.m.pressure = 1.0f;
+    jf_drum_room_buf(&b, room);
+    b.m.punch = b.m.crush = b.m.glue = b.m.pressure = b.m.room = 1.0f;
     b.m.trim_db = 6.0f;
     jf_drum_update(&b);
     for (i = 0; i < 20000; i++) x[i] = jo_noise(&rng) * 8.0f;
-    jf_drum_process(&b, x, 20000);
+    jf_drum_process(&b, x, x, 20000);
     for (i = 0; i < 20000; i++) { if (!jo_finite(x[i])) ok = 0; if (fabsf(x[i]) > pk) pk = fabsf(x[i]); }
     CHECK(ok);
     CHECKF(pk <= jo_db2lin(-0.5f) + 1e-4f, "drum bus peak %f", (double)pk);

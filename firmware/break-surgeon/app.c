@@ -10,6 +10,7 @@
 /* ------------------------------------------------------------------ state --- */
 static bs_engine_t eng PLAT_POOL;
 static int16_t test_pcm[31200] PLAT_POOL;   /* the procedural test break at 22,059 Hz (jb_testbreak_frames) */
+static int16_t room_buf[JF_VERB_TOTAL] PLAT_POOL; /* DRUM PRESSURE's room: 32 KiB */
 _Static_assert(sizeof test_pcm / 2u >= 31142u, "the test break fits");
 
 #define SET_MAGIC 0x31534253u               /* "SBS1" */
@@ -309,6 +310,7 @@ void app_init(void)
 {
     const uint8_t *img = plat_data(BS_BANK_LO);
     bs_init(&eng, test_pcm, img, img ? BS_BANK_HI - BS_BANK_LO : 0u);
+    bs_set_room_buf(&eng, room_buf);
     bs_set_lock_hooks(plat_lock, plat_unlock);
     eng.midi_out = link_out;
     load_all();
@@ -441,11 +443,13 @@ static void perf_key(int w, int down)
         return;
     }
     if (!down) return;
-    if (w == 7) { bs_cmd_fill(&eng, 1); app_say("FILL", "1 BAR"); }
+    if (w == 7) { bs_cmd_fill(&eng, 1); app_say("FILL 1 BAR", "FROM THE NEXT BAR"); }
     else if (w < 15) {
-        bs_cmd_mute(&eng, w - 8, ui_held(&ui.in, B_SEL));
-        if (ui_held(&ui.in, B_SEL)) ui_use(&ui.in, B_SEL);
-    } else { bs_mutate(&eng, ui.mutate_amt, ui.mutate_seed++); app_say("MUTATE", "LFO+SEL: UNDO"); }
+        int solo = ui_held(&ui.in, B_SEL);
+        bs_cmd_mute(&eng, w - 8, solo);
+        if (solo) ui_use(&ui.in, B_SEL);
+        app_say(solo ? "SOLO" : (eng.seq.mute >> (w - 8)) & 1u ? "UNMUTE" : "MUTE", bs_track_name[w - 8]);
+    } else { bs_mutate(&eng, ui.mutate_amt, ui.mutate_seed++); app_say("MUTATE", "SEL+LFO: UNDO"); }
 }
 
 static void scene_key(int s)
@@ -460,6 +464,14 @@ static void scene_key(int s)
     }
     bs_cmd_scene(&eng, s, set.scene_quant);
     app_say(SCENE_NAME[s], QUANT_NAME[set.scene_quant]);
+}
+
+static const char *const PATTERN_NAME[BS_NPATTERNS] = {"P1 DROP", "P2 ROLLER", "P3 HALF-TIME", "P4 INTRO"};
+static void pattern_step(int dir)
+{
+    int p = (eng.next_pat + BS_NPATTERNS + dir) % BS_NPATTERNS;
+    bs_cmd_pattern(&eng, p);
+    app_say(PATTERN_NAME[p], eng.clock.running ? "AT THE NEXT BAR" : "");
 }
 
 static void input(void)
@@ -480,18 +492,24 @@ static void input(void)
         if (ui_held(in, B_SEL)) { ui_use(in, B_SEL); bs_cmd_panic(&eng); bs_cmd_play(&eng, 0); app_say("PANIC", "ALL STOPPED"); }
         else bs_cmd_play(&eng, !eng.clock.running);
     }
-    if (ui_tapped(in, B_REC)) { bs_cmd_return(&eng); app_say("RETURN", "AT THE NEXT BAR"); }
-    if (ui_tapped(in, B_ENV)) { bs_cmd_fill(&eng, ui_held(in, B_SEL) ? 2 : 1); app_say("FILL", "NEXT BAR"); }
+    if (ui_tapped(in, B_REC)) { bs_cmd_return(&eng); app_say("RETURN", "TO THE GROOVE: NEXT BAR"); }
+    if (ui_tapped(in, B_ENV)) {
+        int two = ui_held(in, B_SEL);
+        if (two) ui_use(in, B_SEL);
+        bs_cmd_fill(&eng, two ? 2 : 1);
+        app_say(two ? "FILL 2 BARS" : "FILL 1 BAR", "FROM THE NEXT BAR");
+    }
     if (ui_tapped(in, B_LFO)) {
         if (ui_held(in, B_SEL)) { ui_use(in, B_SEL); app_say("UNDO", bs_undo(&eng) ? "NOTHING TO UNDO" : "BREAK RESTORED"); }
         else { bs_mutate(&eng, ui.mutate_amt, ui.mutate_seed++); app_say("MUTATE", "SEL+LFO: UNDO"); }
         dirty = 1;
     }
     if (ui_tapped(in, B_SAVE)) save_all();
+    if (ui_pressed(in, B_SEL) || ui_pressed(in, B_SAVE) || (in->btn_up & (1u << B_SEL | 1u << B_SAVE))) ui.redraw = 1;
     if (ui_pressed(in, B_OCTDN) || ui_pressed(in, B_OCTUP)) {
         int dir = ui_pressed(in, B_OCTUP) ? 1 : -1;
         if (ui.page == PG_SEQ) ui.step_page = (uint8_t)jo_clampi(ui.step_page + dir, 0, 1);
-        else { bs_cmd_pattern(&eng, (eng.next_pat + BS_NPATTERNS + dir) % BS_NPATTERNS); app_say("PATTERN", "AT THE NEXT BAR"); }
+        else pattern_step(dir);
         ui.redraw = 1;
     }
     /* keys */
@@ -501,6 +519,21 @@ static void input(void)
         int down = (in->key_down & bit) != 0, up = (in->key_up & bit) != 0;
         if (!down && !up) continue;
         ui.redraw = 1;
+        /* on every page, as on Abyss Engine: SEL + white 1-8 queues a scene, SAVE + white 1-8 stores one,
+         * SEL + black 1-7 mutes a track (PERFORM: SEL + white 9-15 solos) */
+        if (down && w >= 0 && w < BS_NSCENES && (ui_held(in, B_SEL) || ui_held(in, B_SAVE))) {
+            if (ui_held(in, B_SEL)) ui_use(in, B_SEL);
+            scene_key(w);
+            ui.key_used |= bit;
+            continue;
+        }
+        if (down && b >= 0 && b < BS_NTRACKS && ui_held(in, B_SEL)) {
+            ui_use(in, B_SEL);
+            bs_cmd_mute(&eng, b, 0);
+            app_say((eng.seq.mute >> b) & 1u ? "UNMUTE" : "MUTE", bs_track_name[b]);
+            continue;
+        }
+        if (up && (ui.key_used & bit) && ui.page != PG_SEQ) { ui.key_used &= ~bit; continue; }
         switch (ui.page) {
         case PG_PERFORM:
             if (w >= 0) perf_key(w, down);
@@ -550,10 +583,15 @@ static void input(void)
         default: break;
         }
     }
-    /* encoders */
+    /* encoders (the strip names what they do on each page; SEL + SELECT is the tempo wherever SELECT is the track) */
     if ((d = plat_enc(EN_SELECT)) != 0) {
-        if (ui.page == PG_SEQ || ui.page == PG_SOUND) ui.track = (uint8_t)jo_clampi(ui.track + (d > 0 ? 1 : -1), 0, BS_NTRACKS - 1);
-        else { set.bpm = jo_clampf(eng.clock.bpm + 0.5f * (float)d, 60.0f, 220.0f); bs_cmd_bpm(&eng, set.bpm); dirty = 1; }
+        if ((ui.page == PG_SEQ || ui.page == PG_SOUND) && !ui_held(in, B_SEL)) ui.track = (uint8_t)jo_clampi(ui.track + (d > 0 ? 1 : -1), 0, BS_NTRACKS - 1);
+        else {
+            if (ui_held(in, B_SEL)) ui_use(in, B_SEL);
+            set.bpm = jo_clampf(eng.clock.bpm + 0.5f * (float)d, 60.0f, 220.0f);
+            bs_cmd_bpm(&eng, set.bpm);
+            dirty = 1;
+        }
         ui.redraw = 1;
     }
     if ((d = plat_enc(EN_ALGO)) != 0) {
@@ -566,17 +604,18 @@ static void input(void)
                 if (js_step_set_lock(st, BS_LK_TUNE, jo_clampi((cur < 0 ? 128 : cur) + 4 * d, 0, 255))) app_say("LOCKS", "TWO PER STEP");
             }
             st->flags |= JS_ON;
+        } else if (ui.page == PG_PERFORM) {
+            app_say("KIT", bs_kit_step(&eng, d)); /* EXPLORE the kit's sweetspots, one node a click */
         } else if (ui.page == PG_FX) {
-            static int preset;
+            static int preset = JF_DRUM_ROLLING;
             preset = (preset + (d > 0 ? 1 : JF_DRUM_NPRESETS - 1)) % JF_DRUM_NPRESETS;
             jf_drum_preset(&eng.bus.m, preset);
             jf_drum_update(&eng.bus);
             app_say("DRUM BUS", jf_drum_preset_name[preset]);
         } else if (ui.page == PG_SOUND && ui.track == BS_T_PERC) {
+            static const char *const PV[JD_PERC_NVAR] = {"TOM", "RIM", "SHAKER", "CLICK"};
             eng.snd[BS_T_PERC].variant = (uint8_t)((eng.snd[BS_T_PERC].variant + (d > 0 ? 1u : JD_PERC_NVAR - 1u)) % JD_PERC_NVAR);
-        } else {
-            js_pattern_t *pt = &eng.pat[eng.cur_pat];
-            pt->swing = (uint8_t)jo_clampi(pt->swing + d, 50, 75);
+            app_say("PERC VOICE", PV[eng.snd[BS_T_PERC].variant]);
         }
         dirty = 1;
         ui.redraw = 1;
@@ -586,8 +625,19 @@ static void input(void)
             set.link_usb_host = d > 0;
             plat_usb_host(set.link_usb_host);
             app_say("USB", set.link_usb_host ? "HOST: LOOKING" : "DEVICE");
-        } else if (ui.page == PG_FX) { eng.bus.m.trim_db = jo_clampf(eng.bus.m.trim_db + 0.5f * (float)d, -12.0f, 6.0f); jf_drum_update(&eng.bus); }
-        else { eng.energy = jo_clampf(eng.energy + 0.02f * (float)d, 0.0f, 1.0f); }
+        } else if (ui.page == PG_PERFORM) {
+            bs_snap(&eng);
+            app_say("SNAP", eng.kit.node[eng.kv.near].name);
+        } else if (ui.page == PG_SEQ) pattern_step(d > 0 ? 1 : -1);
+        else if (ui.page == PG_FX && ui_held(in, B_SEL)) {
+            ui_use(in, B_SEL);
+            eng.bus.m.trim_db = jo_clampf(eng.bus.m.trim_db + 0.5f * (float)d, -12.0f, 6.0f);
+            jf_drum_update(&eng.bus);
+        } else if (ui.page == PG_FX) {
+            eng.bus.m.room = jo_clampf(eng.bus.m.room + 0.02f * (float)d, 0.0f, 1.0f);
+            jf_drum_update(&eng.bus);
+        } else if (ui.page == PG_SOUND && ui.track != BS_T_BREAK)
+            eng.snd[ui.track].level = jo_clampf(eng.snd[ui.track].level + 0.02f * (float)d, 0.0f, 1.0f);
         dirty = 1;
         ui.redraw = 1;
     }
@@ -596,6 +646,19 @@ static void input(void)
 }
 
 /* --------------------------------------------------------------- screens --- */
+/* how far a queued change is from landing (0..1), or -1: a pattern, a scene, RETURN or a fill waiting for its bar */
+static float pending_frac(void)
+{
+    uint32_t now = eng.clock.abs_step, at = 0xFFFFFFFFu, rem, span;
+    if (!eng.clock.running) return -1.0f;
+    if (eng.next_pat != eng.cur_pat || eng.scene_pending >= 0 || eng.return_pending) at = eng.pending_at;
+    if (eng.fill_on && js_before(now, eng.fill_start) && (at == 0xFFFFFFFFu || js_before(eng.fill_start, at))) at = eng.fill_start;
+    if (at == 0xFFFFFFFFu || !js_before(now, at)) return -1.0f;
+    rem = at - now;
+    span = rem > 32u ? 64u : rem > 16u ? 32u : 16u;
+    return 1.0f - (float)rem / (float)span;
+}
+
 static void draw_header(void)
 {
     char mid[24] = "", right[24] = "";
@@ -614,7 +677,8 @@ static void draw_header(void)
     ui_cat(right, eng.scene_cur >= 0 ? SCENE_NAME[eng.scene_cur] : "");
     ui_cat(right, " ");
     { char t[8]; ui_int(t, (int32_t)plat_cpu_pct()); ui_cat(right, t); ui_cat(right, "%"); }
-    ui_header(PAGE_NAME[ui.page], mid, right, alarm);
+    ui_header2(ui_held(&ui.in, B_SEL) ? "SEL" : ui_held(&ui.in, B_SAVE) ? "SAVE" : PAGE_NAME[ui.page], mid, right, alarm,
+               pending_frac());
 }
 
 static void track_row(int32_t y, uint32_t t, int sel)
@@ -631,10 +695,18 @@ static void track_row(int32_t y, uint32_t t, int sel)
         uint32_t p = (eng.seq.pos[t] + tr->len - 1u) % (tr->len ? tr->len : 1u);
         if (p >= base && p < base + 16u) play = (int)(p - base);
     }
-    cv_text(0, y, &FONT_XS, "", C_GRAY);
-    ui_steps(y + 2, 10, on, play, sel && ui.held_step >= 0 ? ui.held_step : -1);
-    if ((eng.seq.mute >> t) & 1u) cv_rect(0, y + 6, 240, 2, RGB(232, 76, 60));
-    if (sel) cv_rect(0, y + 1, 1, 12, C_WHITE);
+    ui_steps(y, 8, on, play, sel && ui.held_step >= 0 ? ui.held_step : -1);
+    if ((eng.seq.mute >> t) & 1u) cv_rect(0, y + 3, 240, 2, RGB(232, 76, 60));
+    if (sel) cv_rect(0, y - 1, 1, 10, C_WHITE);
+}
+
+/* with SEL held: what the buttons do with it, over the bottom of the page */
+static void sel_overlay(void)
+{
+    cv_rect(0, 82, 240, 33, C_BLACK);
+    cv_rect(0, 82, 240, 1, C_HI);
+    cv_text(4, 86, &FONT_T, "SEL + PLAY: PANIC    SEL + ENV: FILL 2 BARS", C_WHITE);
+    cv_text(4, 99, &FONT_T, "SEL + LFO: UNDO      SEL + KNOB: FINE STEPS", C_WHITE);
 }
 
 static void draw_body(void)
@@ -645,34 +717,34 @@ static void draw_body(void)
     switch (ui.page) {
     case PG_PERFORM: {
         const char *perf = bs_perf_name[eng.perf];
-        cv_text(6, 4, &FONT_L, eng.scene_cur >= 0 ? SCENE_NAME[eng.scene_cur] : "-", C_HI);
-        if (eng.scene_pending >= 0) { t[0] = 0; ui_cat(t, "> "); ui_cat(t, SCENE_NAME[eng.scene_pending]); cv_text(140, 14, &FONT_B, t, C_WHITE); }
-        cv_text(6, 44, &FONT_S, "RHYTHM", C_GRAY);
-        cv_text(70, 44, &FONT_B, eng.rhythm.node[eng.rv.near].name, C_AMB);
-        cv_text(6, 62, &FONT_S, "KIT", C_GRAY);
-        cv_text(70, 62, &FONT_B, eng.kit.node[eng.kv.near].name, C_AMB);
-        cv_text(6, 80, &FONT_S, "MODE", C_GRAY);
-        cv_text(70, 80, &FONT_B, eng.fill_on ? "FILL" : perf, eng.perf || eng.fill_on ? C_WHITE : C_AMB);
+        cv_text(6, 2, &FONT_M, eng.scene_cur >= 0 ? SCENE_NAME[eng.scene_cur] : "-", C_HI);
+        if (eng.scene_pending >= 0) { t[0] = 0; ui_cat(t, "> "); ui_cat(t, SCENE_NAME[eng.scene_pending]); cv_text(140, 8, &FONT_B, t, C_WHITE); }
+        cv_text(6, 30, &FONT_S, "RHYTHM", C_GRAY);
+        cv_text(70, 30, &FONT_B, eng.rhythm.node[eng.rv.near].name, C_AMB);
+        cv_text(6, 46, &FONT_S, "KIT", C_GRAY);
+        cv_text(70, 46, &FONT_B, eng.kit.node[eng.kv.near].name, C_AMB);
+        cv_text(6, 62, &FONT_S, "MODE", C_GRAY);
+        cv_text(70, 62, &FONT_B, eng.fill_on ? "FILL" : perf, eng.perf || eng.fill_on ? C_WHITE : C_AMB);
+        t[0] = 0; ui_cat(t, PATTERN_NAME[eng.cur_pat]);
+        cv_text(150, 62, &FONT_S, t, C_GRAY);
         for (i = 0; i < BS_NTRACKS; i++) { /* the mutes */
             int32_t x = 6 + (int32_t)i * 33;
             int m = (eng.seq.mute >> i) & 1u;
-            cv_rect(x, 104, 30, 14, m ? C_LINE : C_DIM);
-            cv_text(x + 2, 105, &FONT_XS, bs_track_name[i], m ? C_DIM : C_WHITE);
+            cv_rect(x, 82, 30, 13, m ? C_LINE : C_DIM);
+            cv_text(x + 2, 82, &FONT_XS, bs_track_name[i], m ? C_DIM : C_WHITE);
         }
-        cv_text(6, 126, &FONT_XS, "OUT", C_GRAY);
-        ui_meter(30, 130, 140, eng.peak, C_HI);
+        cv_text(6, 100, &FONT_XS, "OUT", C_GRAY);
+        ui_meter(30, 105, 140, eng.peak, C_HI);
         eng.peak *= 0.6f;
-        cv_text(180, 126, &FONT_XS, jl_alive(&eng.link, eng.ms) ? "LINK OK" : "SOLO", C_GRAY);
+        cv_text(180, 100, &FONT_XS, jl_alive(&eng.link, eng.ms) ? "LINK OK" : "SOLO", C_GRAY);
         break;
     }
     case PG_SEQ:
-        for (i = 0; i < BS_NTRACKS; i++) {
-            track_row((int32_t)i * 18 + 6, i, i == ui.track);
-        }
+        for (i = 0; i < BS_NTRACKS; i++) track_row((int32_t)i * 13 + 4, i, i == ui.track);
         t[0] = 0;
         ui_cat(t, bs_track_name[ui.track]);
-        ui_cat(t, ui.step_page ? "  17-32" : "  1-16");
-        cv_text(6, 132, &FONT_XS, t, C_HI);
+        ui_cat(t, ui.step_page ? "  STEPS 17-32" : "  STEPS 1-16");
+        cv_text(6, 96, &FONT_XS, t, C_HI);
         if (ui.held_step >= 0) {
             const js_step_t *st = &eng.pat[eng.cur_pat].t[ui.track].s[(ui.step_page * 16 + ui.held_step) % JS_MAXSTEPS];
             char v[8];
@@ -682,86 +754,148 @@ static void draw_body(void)
             ui_cat(t, v);
             if (st->flags & JS_REVERSE) ui_cat(t, " REV");
             if (st->flags & BS_FLAG_OPEN && ui.track == BS_T_HATS) ui_cat(t, " OPEN");
-            cv_text(110, 132, &FONT_XS, t, C_WHITE);
-        }
+            cv_text(130, 96, &FONT_XS, t, C_WHITE);
+        } else
+            cv_text(130, 96, &FONT_XS, PATTERN_NAME[eng.cur_pat], C_GRAY);
         break;
     case PG_SOUND:
-        cv_text(6, 4, &FONT_M, bs_track_name[ui.track], C_HI);
+        cv_text(6, 2, &FONT_M, bs_track_name[ui.track], C_HI);
         if (ui.track == BS_T_BREAK) {
             const jb_break_t *b = &eng.breaks[eng.cur_break];
-            cv_text(6, 34, &FONT_B, b->name, C_AMB);
+            cv_text(6, 30, &FONT_B, b->name, C_AMB);
             t[0] = 0; ui_int(t, (int32_t)b->nslices); ui_cat(t, " SLICES  ");
             { char v[12]; ui_fix1(v, b->bpm); ui_cat(t, v); } ui_cat(t, " BPM  ");
             ui_cat(t, eng.has_bank ? "BANK" : "TEST BREAK");
-            cv_text(6, 54, &FONT_S, t, C_GRAY);
+            cv_text(6, 47, &FONT_S, t, C_GRAY);
             /* the waveform, slice marks over it */
             for (i = 0; i < 228u; i++) {
                 uint32_t a = (uint32_t)((float)b->frames * (float)i / 228.0f), j, m = 0;
-                for (j = 0; j < 64u && a + j < b->frames; j++) { int32_t s = b->pcm[a + j]; s = s < 0 ? -s : s; if ((uint32_t)s > m) m = (uint32_t)s; }
-                m = m * 34u / 32768u;
-                cv_rect(6 + (int32_t)i, 104 - (int32_t)m, 1, (int32_t)(2u * m + 1u), C_DIM);
+                for (j = 0; j < 64u && a + j < b->frames; j++) { int32_t sm = b->pcm[a + j]; sm = sm < 0 ? -sm : sm; if ((uint32_t)sm > m) m = (uint32_t)sm; }
+                m = m * 22u / 32768u;
+                cv_rect(6 + (int32_t)i, 89 - (int32_t)m, 1, (int32_t)(2u * m + 1u), C_DIM);
             }
-            for (i = 0; i < b->nslices; i++) cv_rect(6 + (int32_t)(228.0f * (float)b->start[i] / (float)b->frames), 68, 1, 72, C_AMB);
+            for (i = 0; i < b->nslices; i++) cv_rect(6 + (int32_t)(228.0f * (float)b->start[i] / (float)b->frames), 66, 1, 47, C_AMB);
         } else {
             static const uint8_t M[BS_NTRACKS] = {0, JD_KICK, JD_SNARE, JD_GHOST, JD_HATS, JD_PERC, JD_IMPACT};
             static const char *const PV[JD_PERC_NVAR] = {"TOM", "RIM", "SHAKER", "CLICK"};
-            cv_text(6, 34, &FONT_B, jd_model_name[M[ui.track]], C_AMB);
-            if (ui.track == BS_T_PERC) cv_text(140, 34, &FONT_B, PV[eng.snd[BS_T_PERC].variant % JD_PERC_NVAR], C_WHITE);
-            cv_text(6, 60, &FONT_S, "KIT NODE", C_GRAY);
-            cv_text(80, 60, &FONT_S, eng.kit.node[eng.kv.near].name, C_AMB);
-            cv_text(6, 120, &FONT_XS, "WHITE KEYS: PLAY  BLACK: TRACK", C_DIM);
+            char v[8];
+            cv_text(6, 30, &FONT_B, jd_model_name[M[ui.track]], C_AMB);
+            if (ui.track == BS_T_PERC) cv_text(140, 30, &FONT_B, PV[eng.snd[BS_T_PERC].variant % JD_PERC_NVAR], C_WHITE);
+            cv_text(6, 52, &FONT_S, "KIT NODE", C_GRAY);
+            cv_text(80, 52, &FONT_S, eng.kit.node[eng.kv.near].name, C_AMB);
+            t[0] = 0; ui_cat(t, "LEVEL "); ui_pct(v, eng.snd[ui.track].level); ui_cat(t, v);
+            cv_text(6, 70, &FONT_S, t, C_GRAY);
+            cv_text(6, 92, &FONT_XS, "HARDER HITS: BRIGHTER, MORE CRACK", C_DIM);
         }
         break;
-    case PG_FX:
-        cv_text(6, 4, &FONT_M, "DRUM PRESSURE", C_HI);
-        cv_text(6, 40, &FONT_S, "PEAK", C_GRAY);
-        ui_meter(60, 44, 170, eng.bus.peak, C_HI);
+    case PG_FX: {
+        char v[12];
+        cv_text(6, 2, &FONT_M, "DRUM PRESSURE", C_HI);
+        cv_text(6, 32, &FONT_S, "PEAK", C_GRAY);
+        ui_meter(70, 37, 160, eng.bus.peak, C_HI);
         eng.bus.peak *= 0.6f;
-        cv_text(6, 58, &FONT_S, "GLUE GR", C_GRAY);
-        ui_meter(60, 62, 170, -eng.bus.comp.gr_db / 12.0f, C_AMB);
-        t[0] = 0; ui_cat(t, "TRIM "); { char v[12]; ui_fix1(v, eng.bus.m.trim_db); ui_cat(t, v); } ui_cat(t, " DB");
-        cv_text(6, 80, &FONT_S, t, C_GRAY);
-        t[0] = 0; ui_cat(t, "GUARD HITS "); { char v[12]; ui_int(v, (int32_t)eng.bus.guard.hits); ui_cat(t, v); }
-        cv_text(6, 98, &FONT_S, t, C_GRAY);
-        cv_text(6, 120, &FONT_XS, "ALGO: PRESET  PRESET: TRIM", C_DIM);
+        cv_text(6, 48, &FONT_S, "GLUE GR", C_GRAY);
+        ui_meter(70, 53, 160, -eng.bus.comp.gr_db / 12.0f, C_AMB);
+        cv_text(6, 64, &FONT_S, "ROOM", C_GRAY);
+        ui_meter(70, 69, 160, eng.bus.m.room, C_AMB);
+        t[0] = 0; ui_cat(t, "TRIM "); ui_fix1(v, eng.bus.m.trim_db); ui_cat(t, v); ui_cat(t, " DB   GUARD HITS ");
+        ui_int(v, (int32_t)eng.bus.guard.hits); ui_cat(t, v);
+        cv_text(6, 82, &FONT_S, t, C_GRAY);
         break;
+    }
     case PG_SCENE:
         for (i = 0; i < BS_NSCENES; i++) {
-            int32_t x = 4 + (int32_t)(i % 4u) * 59, y = 6 + (int32_t)(i / 4u) * 50;
+            int32_t x = 4 + (int32_t)(i % 4u) * 59, y = 4 + (int32_t)(i / 4u) * 48;
             int cur = (int)i == eng.scene_cur, pend = (int)i == eng.scene_pending;
             cv_rect(x, y, 55, 44, cur ? C_HI : pend ? C_DIM : C_LINE);
             cv_text(x + 3, y + 4, &FONT_XS, SCENE_NAME[i], cur ? C_BLACK : C_WHITE);
             cv_text(x + 3, y + 26, &FONT_XS, eng.scene[i].used ? "" : "EMPTY", C_GRAY);
         }
-        cv_text(6, 112, &FONT_XS, "WHITE: QUEUE   SAVE+WHITE: STORE", C_DIM);
         break;
     default: { /* SYSTEM */
         char v[16];
         t[0] = 0; ui_cat(t, "CPU "); ui_int(v, (int32_t)plat_cpu_pct()); ui_cat(t, v); ui_cat(t, "%  XRUNS "); ui_int(v, (int32_t)plat_xruns()); ui_cat(t, v);
-        cv_text(6, 4, &FONT_S, t, C_HI);
+        cv_text(6, 2, &FONT_S, t, C_HI);
         t[0] = 0; ui_cat(t, "CLOCK "); ui_cat(t, eng.clock.source == JS_CLK_MIDI ? "MIDI IN" : "INTERNAL");
         ui_cat(t, eng.send_clock ? "  SYNC OUT" : "");
-        cv_text(6, 24, &FONT_S, t, C_GRAY);
+        cv_text(6, 18, &FONT_S, t, C_GRAY);
         t[0] = 0; ui_cat(t, "LINK CH "); ui_int(v, eng.link.channel + 1); ui_cat(t, v); ui_cat(t, jl_alive(&eng.link, eng.ms) ? "  PEER OK" : "  NO PEER");
-        cv_text(6, 42, &FONT_S, t, C_GRAY);
+        cv_text(6, 34, &FONT_S, t, C_GRAY);
         t[0] = 0; ui_cat(t, "BANK "); ui_cat(t, eng.has_bank ? eng.breaks[0].name : "NONE (TEST BREAK)");
-        cv_text(6, 60, &FONT_S, t, C_GRAY);
+        cv_text(6, 50, &FONT_S, t, C_GRAY);
         t[0] = 0; ui_cat(t, "STORE "); ui_cat(t, load_report ? "DEFAULTS USED" : "OK"); ui_cat(t, dirty ? "  UNSAVED" : "");
-        cv_text(6, 78, &FONT_S, t, load_report ? C_WHITE : C_GRAY);
+        cv_text(6, 66, &FONT_S, t, load_report ? C_WHITE : C_GRAY);
         t[0] = 0; ui_cat(t, "QUEUE DROPS "); ui_int(v, (int32_t)eng.q.dropped); ui_cat(t, v);
         ui_cat(t, "  CMD REFUSED "); ui_int(v, (int32_t)eng.cmd.refused); ui_cat(t, v);
-        cv_text(6, 96, &FONT_S, t, C_GRAY);
+        cv_text(6, 82, &FONT_S, t, C_GRAY);
         {
             static const char *const UH[3] = {"DEVICE", "HOST: LOOKING", "HOST: CONNECTED"};
             int st = plat_usb_host_state();
             t[0] = 0; ui_cat(t, "USB "); ui_cat(t, UH[st >= 0 && st <= 2 ? st : 0]);
-            cv_text(6, 112, &FONT_S, t, st == USBH_CONNECTED ? C_HI : C_GRAY);
+            cv_text(6, 98, &FONT_S, t, st == USBH_CONNECTED ? C_HI : C_GRAY);
         }
-        cv_text(6, 130, &FONT_XS, "PRESET: USB HOST ON / OFF", C_DIM);
         break;
     }
     }
+    if (ui_held(&ui.in, B_SEL)) sel_overlay();
     cv_blit(0, UI_BODY_Y);
+}
+
+/* the strip: the encoders and the keys on this page, or with SEL / SAVE held */
+static void draw_strip(void)
+{
+    ui_kg_t g[8];
+    const char *enc[3] = {0, 0, 0};
+    uint32_t n = 0;
+    int layer = ui_held(&ui.in, B_SAVE) ? 2 : ui_held(&ui.in, B_SEL) ? 1 : 0;
+    int trackpage = ui.page == PG_SEQ || ui.page == PG_SOUND;
+    if (layer == 2) {
+        g[n++] = (ui_kg_t)UI_W(0, 7, "STORE THE SCENE HERE (1-8)");
+    } else if (layer == 1) {
+        g[n++] = (ui_kg_t)UI_W(0, 7, "QUEUE SCENE 1-8");
+        if (ui.page == PG_PERFORM) g[n++] = (ui_kg_t)UI_W(8, 14, "SOLO");
+        g[n++] = (ui_kg_t)UI_B(0, 6, "MUTE TRACK 1-7");
+        enc[0] = trackpage ? "TEMPO" : 0;
+        enc[2] = ui.page == PG_FX ? "TRIM" : 0;
+    } else {
+        switch (ui.page) {
+        case PG_PERFORM:
+            g[n++] = (ui_kg_t)UI_W(0, 6, "HOLD: PERFORM FX");
+            g[n++] = (ui_kg_t)UI_W(7, 7, "FILL");
+            g[n++] = (ui_kg_t)UI_W(8, 14, "MUTE TRACKS");
+            g[n++] = (ui_kg_t)UI_W(15, 15, "MUTATE");
+            g[n++] = (ui_kg_t)UI_B(0, 7, "SCENES 1-8");
+            g[n++] = (ui_kg_t)UI_B(8, 9, "FILL 2/4");
+            g[n++] = (ui_kg_t)UI_B(10, 10, "UNDO");
+            enc[0] = "TEMPO"; enc[1] = "KIT NODE"; enc[2] = "SNAP";
+            break;
+        case PG_SEQ:
+            g[n++] = (ui_kg_t)UI_W(0, 15, ui.held_step >= 0 ? "TURN K1-K4: VEL PROB RATCH MICRO" : "STEPS: TAP ON/OFF, HOLD + KNOB EDITS");
+            g[n++] = (ui_kg_t)UI_B(0, 6, "TRACKS");
+            g[n++] = (ui_kg_t)UI_B(7, 7, "GHOST");
+            g[n++] = (ui_kg_t)UI_B(8, 9, "MUT/UNDO");
+            if (ui.track == BS_T_HATS) g[n++] = (ui_kg_t)UI_B(10, 10, "OPEN");
+            else if (ui.track == BS_T_BREAK) g[n++] = (ui_kg_t)UI_B(10, 10, "REV");
+            enc[0] = "TRACK";
+            enc[1] = ui.held_step >= 0 ? (ui.track == BS_T_BREAK ? "SLICE" : "TUNE") : 0;
+            enc[2] = "PATTERN";
+            break;
+        case PG_SOUND:
+            g[n++] = (ui_kg_t)UI_W(0, 15, ui.track == BS_T_BREAK ? "PLAY SLICES 1-16" : "PLAY IT: SOFT (LEFT) TO HARD (RIGHT)");
+            g[n++] = (ui_kg_t)UI_B(0, 6, "TRACKS");
+            enc[0] = "TRACK";
+            enc[1] = ui.track == BS_T_PERC ? "VOICE" : 0;
+            enc[2] = ui.track == BS_T_BREAK ? 0 : "LEVEL";
+            break;
+        case PG_FX: enc[0] = "TEMPO"; enc[1] = "PRESET"; enc[2] = "ROOM"; break;
+        case PG_SCENE:
+            g[n++] = (ui_kg_t)UI_W(0, 7, "QUEUE SCENE 1-8");
+            enc[0] = "TEMPO";
+            break;
+        default: enc[0] = "TEMPO"; enc[2] = "USB HOST"; break;
+        }
+    }
+    ui_strip(enc, g, n, layer);
 }
 
 static void draw_footer(void)
@@ -773,7 +907,7 @@ static void draw_footer(void)
     js_pattern_t *pt = &eng.pat[eng.cur_pat];
     switch (ui.page) {
     case PG_PERFORM:
-        name[0] = "BREAK"; name[1] = "KIT"; name[2] = "PRESSURE"; name[3] = "ENERGY";
+        name[0] = "BREAK"; name[1] = "KIT"; name[2] = "PRESSURE"; name[3] = "FILL AMT";
         v[0] = eng.rhythm_t; v[1] = eng.kit_t; v[2] = eng.bus.m.pressure; v[3] = eng.energy;
         break;
     case PG_SEQ:
@@ -802,7 +936,7 @@ static void draw_footer(void)
         }
         break;
     case PG_FX:
-        name[0] = "PUNCH"; name[1] = "CRUSH"; name[2] = "GLUE"; name[3] = "PRESSURE";
+        name[0] = "PUNCH"; name[1] = "GRIT"; name[2] = "GLUE"; name[3] = "PRESSURE";
         v[0] = eng.bus.m.punch; v[1] = eng.bus.m.crush; v[2] = eng.bus.m.glue; v[3] = eng.bus.m.pressure;
         break;
     case PG_SCENE:
@@ -874,5 +1008,6 @@ void app_frame(void)
     ui.redraw = 0;
     draw_header();
     draw_body();
+    draw_strip();
     draw_footer();
 }

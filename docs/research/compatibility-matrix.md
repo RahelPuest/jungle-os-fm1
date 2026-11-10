@@ -68,7 +68,7 @@ Status as of 2026-11-10 (CHANGELOG 0.1.0-dev).
 | Pad: 4 voices, slow envelopes, LFO evolution, tension; tails survive scene changes | SIM-TESTED | |
 | Harmonic sequencer: bass (slide, accent, MORPH/BITE/octave locks), stab, pad tracks | SIM-TESTED | |
 | Scales: minor, harmonic minor, Phrygian, Dorian, chromatic | SIM-TESTED | user pitch sets: DEFERRED |
-| Sweetspot graph: MORPH, SNAP, EXPLORE, MUTATE radius, REVERT history | SIM-TESTED | 10 nodes, UNREVIEWED |
+| Sweetspot graph: MORPH, SNAP, EXPLORE, MUTATE radius, UNDO history | SIM-TESTED | 10 nodes, UNREVIEWED |
 | Loudness trims of the path nodes | PROTOTYPE | RMS-calibrated to −13 dBFS (a proxy); by ear: pending |
 | NEURO PRESSURE (clean sub path, high-passed dirty bass, width only above 140 Hz) | SIM-TESTED | side < 120 Hz measured ≤ −57 dB re mid |
 | Delay (ping-pong, synced) and small FDN reverb send | SIM-TESTED | |

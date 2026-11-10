@@ -63,7 +63,7 @@ static void measure(result_t *r, const int32_t *lr24, int16_t *lr16, uint32_t fr
 
 static bs_engine_t BS;
 static ab_engine_t AB;
-static int16_t testpcm[70000];
+static int16_t testpcm[70000], roombuf[JF_VERB_TOTAL];
 static int16_t abpool[AB_POOL_SAMPLES];
 static int32_t lr24[44118 * 2 * 40];
 static int16_t lr16[44118 * 2 * 40];
@@ -196,7 +196,7 @@ int main(int argc, char **argv)
     for (i = 0; i < nsc; i++) {
         result_t r;
         int bad = 0;
-        if (SC[i].which == 0) { bs_init(&BS, testpcm, 0, 0); run_bs(&r, SC[i].seconds, SC[i].s); }
+        if (SC[i].which == 0) { bs_init(&BS, testpcm, 0, 0); bs_set_room_buf(&BS, roombuf); run_bs(&r, SC[i].seconds, SC[i].s); }
         else { ab_init(&AB, abpool); run_ab(&r, SC[i].seconds, SC[i].s); }
         snprintf(path, sizeof path, "%s/%s.wav", out, SC[i].name);
         wav_write(path, lr16, r.frames);

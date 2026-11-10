@@ -42,8 +42,8 @@ static void graphs_init(bs_engine_t *e)
         {"GLITCHED", {0.8f, 0.55f, 0.3f, 0.4f, 0.3f, 0.35f, 0.55f, 0.35f}},
     };
     static const struct { const char *n; float v[BS_NKPARAMS]; float trim; } KN[] = {
-        {"DUSTY ROLLER", {0.4f, 0.45f, 0.3f, 0.3f, 0.55f, 0.45f, 0.45f, 0.35f, 0.3f, 0.35f, 0.35f, 0.5f, 0.4f, 0.4f, 0.4f, 0.5f}, 0.0f},
-        {"JUNGLE SNAP", {0.45f, 0.5f, 0.35f, 0.15f, 0.6f, 0.55f, 0.55f, 0.25f, 0.4f, 0.5f, 0.3f, 0.4f, 0.5f, 0.35f, 0.5f, 0.4f}, 0.0f},
+        {"DUSTY ROLLER", {0.4f, 0.45f, 0.3f, 0.3f, 0.55f, 0.45f, 0.45f, 0.35f, 0.2f, 0.35f, 0.35f, 0.5f, 0.4f, 0.4f, 0.4f, 0.5f}, 0.0f},
+        {"JUNGLE SNAP", {0.45f, 0.5f, 0.35f, 0.15f, 0.6f, 0.55f, 0.55f, 0.25f, 0.25f, 0.5f, 0.3f, 0.4f, 0.5f, 0.35f, 0.5f, 0.4f}, 0.0f},
         {"TIGHT NEURO", {0.25f, 0.8f, 0.5f, 0.35f, 0.4f, 0.85f, 0.2f, 0.6f, 0.6f, 0.75f, 0.15f, 0.1f, 0.7f, 0.2f, 0.6f, 0.25f}, -1.0f},
         {"METAL TECHSTEP", {0.3f, 0.7f, 0.45f, 0.5f, 0.35f, 0.9f, 0.3f, 0.7f, 0.9f, 0.8f, 0.2f, 0.1f, 0.8f, 0.25f, 0.8f, 0.2f}, -1.5f},
         {"INDUSTRIAL", {0.5f, 0.9f, 0.6f, 0.85f, 0.5f, 0.95f, 0.35f, 0.95f, 0.85f, 0.6f, 0.25f, 0.2f, 0.6f, 0.3f, 0.7f, 0.3f}, -2.5f},
@@ -122,24 +122,30 @@ static void track_str(js_track_t *t, const char *s)
 
 void bs_default_patterns(bs_engine_t *e)
 {
+    /* at 174 BPM; the test break's own hits (jo_break.c): kicks on 1 and the and of 3, snares on 2 and 4 */
     static const char *const P[BS_NPATTERNS][BS_NTRACKS] = {
-        /* 0 DROP: the full break under a two-step kick and backbeat */
-        {"xxxxxxxxxxxxxxxx", "X.........x.....", "....X.......X...", "", "..o...o...o...O.", ".......o.......o", ""},
-        /* 1 ROLLER: the break with more kicks, 16th hats */
-        {"xxxxxxxxxxxxxxxx", "X......x..x.....", "....X.......X...", "", "goxogoxogoxogoxO", "", ""},
+        /* 0 DROP: the break whole under a two-step kick and backbeat, offbeat hats */
+        {"xxxxxxxxxxxxxxxx", "X.........x.....", "....X.......X...", "", "..o...x...o...O.", ".......o.......o", ""},
+        /* 1 ROLLER: the break edited (its first half again, a snare pushed), a rolling kick, 16th shakers */
+        {"xxxxxxxxxxxxxxxx", "X.........x..x..", "....X.......X...", "", "goxogoxogoxogoxO", "", ""},
         /* 2 HALF-TIME: kick and snare at half time, the break on 8ths */
-        {"x.x.x.x.x.x.x.x.", "X.......x.......", "........X.......", "", "o.o.o.o.o.o.o.O.", "...o.......o....", ""},
+        {"x.x.x.x.x.x.x.x.", "X..........x....", "........X.......", "", "o.x.o.x.o.x.o.O.", "...o.......o....", ""},
         /* 3 INTRO: the break thinned out, no synthetic kick or snare */
         {"x.x.x..xx.x.x.x.", "................", "................", "", "..o...o...o...o.", "", ""},
     };
-    uint32_t p, t;
+    /* ROLLER's break edit: slices 1-8, then 1-2 again, the rest, the last snare doubled into a roll */
+    static const uint8_t ROLL_EDIT[16] = {0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 12, 15};
+    uint32_t p, t, i;
     for (p = 0; p < BS_NPATTERNS; p++) {
         js_pattern_clear(&e->pat[p], BS_NTRACKS, 16);
         e->pat[p].seed = (uint16_t)(101u + p);
-        e->pat[p].swing = p == 1 ? 56 : 52;
+        e->pat[p].swing = 50; /* drum & bass sits straight; the feel is in the ghosts and the microtiming */
         for (t = 0; t < BS_NTRACKS; t++)
             if (P[p][t][0]) track_str(&e->pat[p].t[t], P[p][t]);
     }
+    for (i = 0; i < 16u; i++) e->pat[1].t[BS_T_BREAK].s[i].data = ROLL_EDIT[i];
+    e->pat[1].t[BS_T_BREAK].s[14].ratch = 1;           /* the doubled snare as a roll */
+    e->pat[1].t[BS_T_BREAK].s[14].vel = 84;
     e->pat[0].t[BS_T_PERC].s[7].data = 0;
     /* ghosts on the patterns that drive */
     {
@@ -174,7 +180,7 @@ void bs_ghosts(bs_engine_t *e, float density, uint32_t seed)
             if (unit(h) < density * w) {
                 st->flags = JS_ON;
                 st->vel = (uint8_t)(before_snare ? 62 : 30 + (int)(unit(h * 7u + 1u) * 22.0f));
-                st->micro = (int8_t)(e->snd[BS_T_GHOST].m[3] * 18.0f); /* GHOST's SWING: a lazier ghost */
+                st->micro = (int8_t)(e->snd[BS_T_GHOST].m[3] * 24.0f); /* GHOST's SWING: a lazier ghost (~8 ms at 0.5) */
                 run++;
             } else
                 run = 0;
@@ -548,6 +554,22 @@ void bs_init(bs_engine_t *e, int16_t *test_pcm, const uint8_t *bank, uint32_t ba
     e->pending_at = 0xFFFFFFFFu;
 }
 
+/* SNAP: the BREAK and KIT knobs to their nearest nodes; the kit one node along its path (PERFORM's PRESET and ALGO,
+ * as Abyss Engine's SNAP and EXPLORE) */
+void bs_snap(bs_engine_t *e)
+{
+    bs_set_rhythm(e, jg_path_t(&e->rhythm, jg_snap(&e->rhythm, e->rhythm_t)));
+    bs_set_kit(e, jg_path_t(&e->kit, jg_snap(&e->kit, e->kit_t)));
+}
+
+const char *bs_kit_step(bs_engine_t *e, int dir)
+{
+    int k = (int)jg_snap(&e->kit, e->kit_t) + (dir > 0 ? 1 : -1);
+    k = k < 0 ? 0 : k >= (int)e->kit.npath ? (int)e->kit.npath - 1 : k;
+    bs_set_kit(e, jg_path_t(&e->kit, (uint32_t)k));
+    return e->kit.node[e->kit.path[k]].name;
+}
+
 void bs_fx_update(bs_engine_t *e) { jf_drum_update(&e->bus); }
 
 /* ------------------------------------------------------------- commands --- */
@@ -661,12 +683,27 @@ static void do_cmd(bs_engine_t *e, const jo_cmd_t *c)
 }
 
 /* ---------------------------------------------------------------- render --- */
-static void render_voices(bs_engine_t *e, float *buf, uint32_t n)
+/* each track's share of the room (DRUM PRESSURE's ROOM sets the room's level): the snare and its ghosts most, the
+ * kick almost none (a dry kick keeps its punch) */
+static const float ROOM_SEND[BS_NTRACKS] = {0.2f, 0.04f, 0.55f, 0.45f, 0.12f, 0.3f, 0.5f};
+
+static void render_voices(bs_engine_t *e, float *buf, float *send, uint32_t n)
 {
-    uint32_t t;
-    jb_render(&e->player, buf, n);
-    for (t = 1; t < BS_NTRACKS; t++) jd_render(&e->dv[t], buf, n);
+    float *tmp = e->tmp_buf;
+    uint32_t t, i;
+    for (t = 0; t < BS_NTRACKS; t++) {
+        if (t == 0 ? !(e->player.v[0].active || e->player.v[1].active) : !e->dv[t].active) continue;
+        for (i = 0; i < n; i++) tmp[i] = 0.0f;
+        if (t == 0) jb_render(&e->player, tmp, n);
+        else jd_render(&e->dv[t], tmp, n);
+        for (i = 0; i < n; i++) {
+            buf[i] += tmp[i];
+            send[i] += tmp[i] * ROOM_SEND[t];
+        }
+    }
 }
+
+void bs_set_room_buf(bs_engine_t *e, int16_t *buf) { jf_drum_room_buf(&e->bus, buf); }
 
 void bs_render_float(bs_engine_t *e, float *buf, uint32_t n)
 {
@@ -685,7 +722,7 @@ void bs_render_float(bs_engine_t *e, float *buf, uint32_t n)
     h.ctx = e;
     t0 = e->clock.now;
     js_run(&e->seq, &e->clock, &e->q, n, &h);
-    for (i = 0; i < n; i++) buf[i] = 0.0f;
+    for (i = 0; i < n; i++) buf[i] = e->send_buf[i] = 0.0f;
     for (;;) {
         uint32_t nd, end;
         while (js_queue_pop_due(&e->q, t0 + pos + 1u, &ev)) fire(e, &ev);
@@ -693,10 +730,10 @@ void bs_render_float(bs_engine_t *e, float *buf, uint32_t n)
         nd = js_queue_next_due(&e->q, t0 + n);
         end = js_before(nd, t0 + n) ? nd - t0 : n;
         if (end <= pos) end = pos + 1u;
-        render_voices(e, buf + pos, end - pos);
+        render_voices(e, buf + pos, e->send_buf + pos, end - pos);
         pos = end;
     }
-    jf_drum_process(&e->bus, buf, n);
+    jf_drum_process(&e->bus, buf, e->send_buf, n);
     /* link heartbeat, and the millisecond count from the samples */
     {
         uint32_t tot = n * 1000u + e->ms_rem, pk[1];

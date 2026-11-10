@@ -25,6 +25,7 @@ for fw in break-surgeon:breaksurgeon abyss-engine:abyssengine; do
     [ -f "$pkg" ] || { echo "make_site: no $pkg" >&2; exit 1; }
     cp "$pkg" release/
     python3 base/tools/make_site.py "$app" "$pkg" "$V" "$ROOT/$OUT/$dir"
+    for old in release/$name-*.fwsc; do [ -f "$OUT/$dir/firmware/$(basename "$old")" ] || cp "$old" "$OUT/$dir/firmware/"; done
     # the pages show fm1.toml's name, which is also the file stem (lower case, one word): the shown name instead,
     # identifiers, storage keys and file names left as they are
     shown=$(printf '%s' "$dir" | tr 'a-z-' 'A-Z ')

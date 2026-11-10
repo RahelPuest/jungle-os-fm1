@@ -109,6 +109,8 @@ void ab_cmd_pattern(ab_engine_t *e, int p);
 void ab_cmd_scene(ab_engine_t *e, int s, int quant);
 void ab_cmd_panic(ab_engine_t *e);
 void ab_cmd_mute(ab_engine_t *e, int track);
+void ab_cmd_fill(ab_engine_t *e, int bars);      /* a 1- or 2-bar fill (the bass rolls), as the link's */
+void ab_cmd_return(ab_engine_t *e);              /* RETURN: SNAP, the mutation and the fill ended */
 
 void ab_set_morph(ab_engine_t *e, float t);
 int ab_snap(ab_engine_t *e);                     /* MORPH to the nearest node; returns its index */
