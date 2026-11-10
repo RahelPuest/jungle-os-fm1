@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.0 (2026-11-10): the drum & bass look; text that fits
+
+Still not installed on a physical FM-1. The sound is unchanged since 0.2.0.
+
+The screens (both firmwares)
+- **Text always fits its box.** Every text on the pages, in the header, the strip and the knob boxes is drawn by
+  `ui_fit`: in its font if it fits, else in the next smaller one, cut only as a last resort.
+  - The host simulator reports any cut on stderr, and `tools/build_all.sh` fails on it.
+  - The simulator scripts now tour every page, track and part, plain and with SEL or SAVE held. No text is cut.
+  - Break Surgeon's mute boxes are wider, so IMPACT fits.
+- **A drum & bass look:** near-black, one loud hue per instrument.
+  - BREAK SURGEON: acid lime values over hazard yellow. ABYSS ENGINE: abyss cyan over neuro violet.
+  - Hazard stripes along the header's edge; they turn red on an alarm, and the countdown runs over them.
+  - A slanted page tab.
+  - The knob boxes have big values, a cut corner and a top edge that lights while turned.
+  - A start screen with the name between hazard bars.
+
+The site
+- **The same look on every page** (`site/dnb.css`, linked by `tools/make_site.sh`): the front pages, the manuals,
+  the installer and the emulator.
+  - Black, with the instrument's colours, hazard tape under the bar, big condensed capitals with an offset print.
+  - Screenshots get a hard offset shadow.
+
 ## 0.2.0 (2026-11-10): a drum & bass kit, and controls you can read off the screen
 
 Still not installed on a physical FM-1.

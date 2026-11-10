@@ -17,7 +17,7 @@
 
 <p align="center">
   <img alt="Licence MPL-2.0" src="https://img.shields.io/badge/licence-MPL--2.0-blue">
-  <img alt="Version 0.2.0" src="https://img.shields.io/badge/version-0.2.0-orange">
+  <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-orange">
   <img alt="Not yet tested on hardware" src="https://img.shields.io/badge/hardware-not%20yet%20tested-red">
 </p>
 
@@ -47,11 +47,11 @@ Two custom firmwares for two M-VAVE FM-1s that together make a hardware drum & b
 
 They talk **JUNGLE LINK** (plain MIDI: clock, transport, scenes, fills, kick triggers) and each works alone.
 
-## Status: 0.2.0 — simulator-tested, not yet on hardware
+## Status: 0.3.0 — simulator-tested, not yet on hardware
 
 | | |
 |---|---|
-| Builds for the FM-1 | yes: `breaksurgeon.fwsc` (153 KB image), `abyssengine.fwsc` (149 KB), all fm1-base static checks pass |
+| Builds for the FM-1 | yes: `breaksurgeon.fwsc` (154 KB image), `abyssengine.fwsc` (151 KB), all fm1-base static checks pass |
 | Tested | 124 engine checks, 8 audio-regression renders, the sample tools, both whole apps scripted in fm1-base's host simulator, both device binaries booted and played in fm1-emu |
 | CPU (fm1-emu, 240 MHz, lower bound) | Break Surgeon 17 % playing (0.2, with the room), Abyss Engine 28–38 % |
 | **Not done** | **no install on a physical FM-1 yet**; real CPU load; two-FM-1 link; listening certification of the sweetspots |
@@ -71,7 +71,7 @@ tools/build_all.sh --no-device                  # + both host simulators and the
 ```
 
 The site (both browser emulators, manuals, web installers, the release packages in `release/`):
-`tools/make_site.sh 0.2.0` writes `release/site`, which `.github/workflows/pages.yml` deploys on a push to main.
+`tools/make_site.sh 0.3.0` writes `release/site`, which `.github/workflows/pages.yml` deploys on a push to main.
 
 Device packages need the JieLi toolchain, the AC79 SDK and Docker: [docs/development/setup.md](docs/development/setup.md).
 Installing on an FM-1: [docs/development/install-and-recovery.md](docs/development/install-and-recovery.md) —

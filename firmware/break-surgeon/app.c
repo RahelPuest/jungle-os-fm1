@@ -47,7 +47,7 @@ static struct {
     float mutate_amt, ghost_density;
     uint32_t mutate_seed;
     ui_in_t in;
-    uint32_t last_draw;
+    uint32_t last_draw, splash_until;
 } ui;
 
 /* ------------------------------------------------------------------ MIDI --- */
@@ -696,7 +696,7 @@ static void track_row(int32_t y, uint32_t t, int sel)
         if (p >= base && p < base + 16u) play = (int)(p - base);
     }
     ui_steps(y, 8, on, play, sel && ui.held_step >= 0 ? ui.held_step : -1);
-    if ((eng.seq.mute >> t) & 1u) cv_rect(0, y + 3, 240, 2, RGB(232, 76, 60));
+    if ((eng.seq.mute >> t) & 1u) cv_rect(0, y + 3, 240, 2, UI_RED);
     if (sel) cv_rect(0, y - 1, 1, 10, C_WHITE);
 }
 
@@ -705,8 +705,8 @@ static void sel_overlay(void)
 {
     cv_rect(0, 82, 240, 33, C_BLACK);
     cv_rect(0, 82, 240, 1, C_HI);
-    cv_text(4, 86, &FONT_T, "SEL + PLAY: PANIC    SEL + ENV: FILL 2 BARS", C_WHITE);
-    cv_text(4, 99, &FONT_T, "SEL + LFO: UNDO      SEL + KNOB: FINE STEPS", C_WHITE);
+    ui_fit(4, 86, 234 - (4), &FONT_T, "SEL + PLAY: PANIC    SEL + ENV: FILL 2 BARS", C_WHITE);
+    ui_fit(4, 99, 234 - (4), &FONT_T, "SEL + LFO: UNDO      SEL + KNOB: FINE STEPS", C_WHITE);
 }
 
 static void draw_body(void)
@@ -717,26 +717,27 @@ static void draw_body(void)
     switch (ui.page) {
     case PG_PERFORM: {
         const char *perf = bs_perf_name[eng.perf];
-        cv_text(6, 2, &FONT_M, eng.scene_cur >= 0 ? SCENE_NAME[eng.scene_cur] : "-", C_HI);
-        if (eng.scene_pending >= 0) { t[0] = 0; ui_cat(t, "> "); ui_cat(t, SCENE_NAME[eng.scene_pending]); cv_text(140, 8, &FONT_B, t, C_WHITE); }
-        cv_text(6, 30, &FONT_S, "RHYTHM", C_GRAY);
-        cv_text(70, 30, &FONT_B, eng.rhythm.node[eng.rv.near].name, C_AMB);
-        cv_text(6, 46, &FONT_S, "KIT", C_GRAY);
-        cv_text(70, 46, &FONT_B, eng.kit.node[eng.kv.near].name, C_AMB);
-        cv_text(6, 62, &FONT_S, "MODE", C_GRAY);
-        cv_text(70, 62, &FONT_B, eng.fill_on ? "FILL" : perf, eng.perf || eng.fill_on ? C_WHITE : C_AMB);
+        ui_fit(6, 2, eng.scene_pending >= 0 ? 128 : 228, &FONT_M, eng.scene_cur >= 0 ? SCENE_NAME[eng.scene_cur] : "-", C_HI);
+        if (eng.scene_pending >= 0) { t[0] = 0; ui_cat(t, "> "); ui_cat(t, SCENE_NAME[eng.scene_pending]); ui_fit(138, 6, 98, &FONT_B, t, C_WHITE); }
+        ui_fit(6, 30, 234 - (6), &FONT_S, "RHYTHM", C_GRAY);
+        ui_fit(70, 30, 234 - (70), &FONT_B, eng.rhythm.node[eng.rv.near].name, C_AMB);
+        ui_fit(6, 46, 234 - (6), &FONT_S, "KIT", C_GRAY);
+        ui_fit(70, 46, 234 - (70), &FONT_B, eng.kit.node[eng.kv.near].name, C_AMB);
+        ui_fit(6, 62, 234 - (6), &FONT_S, "MODE", C_GRAY);
+        ui_fit(70, 62, 76, &FONT_B, eng.fill_on ? "FILL" : perf, eng.perf || eng.fill_on ? C_WHITE : C_AMB);
         t[0] = 0; ui_cat(t, PATTERN_NAME[eng.cur_pat]);
-        cv_text(150, 62, &FONT_S, t, C_GRAY);
+        ui_fit(150, 62, 234 - (150), &FONT_S, t, C_GRAY);
         for (i = 0; i < BS_NTRACKS; i++) { /* the mutes */
-            int32_t x = 6 + (int32_t)i * 33;
+            int32_t x = 2 + (int32_t)i * 34;
             int m = (eng.seq.mute >> i) & 1u;
-            cv_rect(x, 82, 30, 13, m ? C_LINE : C_DIM);
-            cv_text(x + 2, 82, &FONT_XS, bs_track_name[i], m ? C_DIM : C_WHITE);
+            cv_rect(x, 82, 33, 14, m ? C_LINE : C_DIM);
+            if (m) cv_rect(x, 88, 33, 2, UI_RED);
+            ui_fit(x + 2, 83, 30, &FONT_T, bs_track_name[i], m ? C_DIM : C_WHITE);
         }
-        cv_text(6, 100, &FONT_XS, "OUT", C_GRAY);
+        ui_fit(6, 100, 234 - (6), &FONT_XS, "OUT", C_GRAY);
         ui_meter(30, 105, 140, eng.peak, C_HI);
         eng.peak *= 0.6f;
-        cv_text(180, 100, &FONT_XS, jl_alive(&eng.link, eng.ms) ? "LINK OK" : "SOLO", C_GRAY);
+        ui_fit(176, 100, 60, &FONT_XS, jl_alive(&eng.link, eng.ms) ? "LINK OK" : "SOLO", C_GRAY);
         break;
     }
     case PG_SEQ:
@@ -744,7 +745,7 @@ static void draw_body(void)
         t[0] = 0;
         ui_cat(t, bs_track_name[ui.track]);
         ui_cat(t, ui.step_page ? "  STEPS 17-32" : "  STEPS 1-16");
-        cv_text(6, 96, &FONT_XS, t, C_HI);
+        ui_fit(6, 96, 120, &FONT_XS, t, C_HI);
         if (ui.held_step >= 0) {
             const js_step_t *st = &eng.pat[eng.cur_pat].t[ui.track].s[(ui.step_page * 16 + ui.held_step) % JS_MAXSTEPS];
             char v[8];
@@ -754,19 +755,19 @@ static void draw_body(void)
             ui_cat(t, v);
             if (st->flags & JS_REVERSE) ui_cat(t, " REV");
             if (st->flags & BS_FLAG_OPEN && ui.track == BS_T_HATS) ui_cat(t, " OPEN");
-            cv_text(130, 96, &FONT_XS, t, C_WHITE);
+            ui_fit(130, 96, 234 - (130), &FONT_XS, t, C_WHITE);
         } else
-            cv_text(130, 96, &FONT_XS, PATTERN_NAME[eng.cur_pat], C_GRAY);
+            ui_fit(130, 96, 234 - (130), &FONT_XS, PATTERN_NAME[eng.cur_pat], C_GRAY);
         break;
     case PG_SOUND:
-        cv_text(6, 2, &FONT_M, bs_track_name[ui.track], C_HI);
+        ui_fit(6, 2, 234 - (6), &FONT_M, bs_track_name[ui.track], C_HI);
         if (ui.track == BS_T_BREAK) {
             const jb_break_t *b = &eng.breaks[eng.cur_break];
-            cv_text(6, 30, &FONT_B, b->name, C_AMB);
+            ui_fit(6, 30, 234 - (6), &FONT_B, b->name, C_AMB);
             t[0] = 0; ui_int(t, (int32_t)b->nslices); ui_cat(t, " SLICES  ");
             { char v[12]; ui_fix1(v, b->bpm); ui_cat(t, v); } ui_cat(t, " BPM  ");
             ui_cat(t, eng.has_bank ? "BANK" : "TEST BREAK");
-            cv_text(6, 47, &FONT_S, t, C_GRAY);
+            ui_fit(6, 47, 234 - (6), &FONT_S, t, C_GRAY);
             /* the waveform, slice marks over it */
             for (i = 0; i < 228u; i++) {
                 uint32_t a = (uint32_t)((float)b->frames * (float)i / 228.0f), j, m = 0;
@@ -779,28 +780,28 @@ static void draw_body(void)
             static const uint8_t M[BS_NTRACKS] = {0, JD_KICK, JD_SNARE, JD_GHOST, JD_HATS, JD_PERC, JD_IMPACT};
             static const char *const PV[JD_PERC_NVAR] = {"TOM", "RIM", "SHAKER", "CLICK"};
             char v[8];
-            cv_text(6, 30, &FONT_B, jd_model_name[M[ui.track]], C_AMB);
-            if (ui.track == BS_T_PERC) cv_text(140, 30, &FONT_B, PV[eng.snd[BS_T_PERC].variant % JD_PERC_NVAR], C_WHITE);
-            cv_text(6, 52, &FONT_S, "KIT NODE", C_GRAY);
-            cv_text(80, 52, &FONT_S, eng.kit.node[eng.kv.near].name, C_AMB);
+            ui_fit(6, 30, 128, &FONT_B, jd_model_name[M[ui.track]], C_AMB);
+            if (ui.track == BS_T_PERC) ui_fit(140, 30, 234 - (140), &FONT_B, PV[eng.snd[BS_T_PERC].variant % JD_PERC_NVAR], C_WHITE);
+            ui_fit(6, 52, 234 - (6), &FONT_S, "KIT NODE", C_GRAY);
+            ui_fit(80, 52, 234 - (80), &FONT_S, eng.kit.node[eng.kv.near].name, C_AMB);
             t[0] = 0; ui_cat(t, "LEVEL "); ui_pct(v, eng.snd[ui.track].level); ui_cat(t, v);
-            cv_text(6, 70, &FONT_S, t, C_GRAY);
-            cv_text(6, 92, &FONT_XS, "HARDER HITS: BRIGHTER, MORE CRACK", C_DIM);
+            ui_fit(6, 70, 234 - (6), &FONT_S, t, C_GRAY);
+            ui_fit(6, 92, 234 - (6), &FONT_XS, "HARDER HITS: BRIGHTER, MORE CRACK", C_DIM);
         }
         break;
     case PG_FX: {
         char v[12];
-        cv_text(6, 2, &FONT_M, "DRUM PRESSURE", C_HI);
-        cv_text(6, 32, &FONT_S, "PEAK", C_GRAY);
+        ui_fit(6, 2, 234 - (6), &FONT_M, "DRUM PRESSURE", C_HI);
+        ui_fit(6, 32, 234 - (6), &FONT_S, "PEAK", C_GRAY);
         ui_meter(70, 37, 160, eng.bus.peak, C_HI);
         eng.bus.peak *= 0.6f;
-        cv_text(6, 48, &FONT_S, "GLUE GR", C_GRAY);
+        ui_fit(6, 48, 234 - (6), &FONT_S, "GLUE GR", C_GRAY);
         ui_meter(70, 53, 160, -eng.bus.comp.gr_db / 12.0f, C_AMB);
-        cv_text(6, 64, &FONT_S, "ROOM", C_GRAY);
+        ui_fit(6, 64, 234 - (6), &FONT_S, "ROOM", C_GRAY);
         ui_meter(70, 69, 160, eng.bus.m.room, C_AMB);
         t[0] = 0; ui_cat(t, "TRIM "); ui_fix1(v, eng.bus.m.trim_db); ui_cat(t, v); ui_cat(t, " DB   GUARD HITS ");
         ui_int(v, (int32_t)eng.bus.guard.hits); ui_cat(t, v);
-        cv_text(6, 82, &FONT_S, t, C_GRAY);
+        ui_fit(6, 82, 234 - (6), &FONT_S, t, C_GRAY);
         break;
     }
     case PG_SCENE:
@@ -808,31 +809,31 @@ static void draw_body(void)
             int32_t x = 4 + (int32_t)(i % 4u) * 59, y = 4 + (int32_t)(i / 4u) * 48;
             int cur = (int)i == eng.scene_cur, pend = (int)i == eng.scene_pending;
             cv_rect(x, y, 55, 44, cur ? C_HI : pend ? C_DIM : C_LINE);
-            cv_text(x + 3, y + 4, &FONT_XS, SCENE_NAME[i], cur ? C_BLACK : C_WHITE);
-            cv_text(x + 3, y + 26, &FONT_XS, eng.scene[i].used ? "" : "EMPTY", C_GRAY);
+            ui_fit(x + 3, y + 4, 50, &FONT_XS, SCENE_NAME[i], cur ? C_BLACK : C_WHITE);
+            ui_fit(x + 3, y + 26, 50, &FONT_XS, eng.scene[i].used ? "" : "EMPTY", C_GRAY);
         }
         break;
     default: { /* SYSTEM */
         char v[16];
         t[0] = 0; ui_cat(t, "CPU "); ui_int(v, (int32_t)plat_cpu_pct()); ui_cat(t, v); ui_cat(t, "%  XRUNS "); ui_int(v, (int32_t)plat_xruns()); ui_cat(t, v);
-        cv_text(6, 2, &FONT_S, t, C_HI);
+        ui_fit(6, 2, 234 - (6), &FONT_S, t, C_HI);
         t[0] = 0; ui_cat(t, "CLOCK "); ui_cat(t, eng.clock.source == JS_CLK_MIDI ? "MIDI IN" : "INTERNAL");
         ui_cat(t, eng.send_clock ? "  SYNC OUT" : "");
-        cv_text(6, 18, &FONT_S, t, C_GRAY);
+        ui_fit(6, 18, 234 - (6), &FONT_S, t, C_GRAY);
         t[0] = 0; ui_cat(t, "LINK CH "); ui_int(v, eng.link.channel + 1); ui_cat(t, v); ui_cat(t, jl_alive(&eng.link, eng.ms) ? "  PEER OK" : "  NO PEER");
-        cv_text(6, 34, &FONT_S, t, C_GRAY);
+        ui_fit(6, 34, 234 - (6), &FONT_S, t, C_GRAY);
         t[0] = 0; ui_cat(t, "BANK "); ui_cat(t, eng.has_bank ? eng.breaks[0].name : "NONE (TEST BREAK)");
-        cv_text(6, 50, &FONT_S, t, C_GRAY);
+        ui_fit(6, 50, 234 - (6), &FONT_S, t, C_GRAY);
         t[0] = 0; ui_cat(t, "STORE "); ui_cat(t, load_report ? "DEFAULTS USED" : "OK"); ui_cat(t, dirty ? "  UNSAVED" : "");
-        cv_text(6, 66, &FONT_S, t, load_report ? C_WHITE : C_GRAY);
+        ui_fit(6, 66, 234 - (6), &FONT_S, t, load_report ? C_WHITE : C_GRAY);
         t[0] = 0; ui_cat(t, "QUEUE DROPS "); ui_int(v, (int32_t)eng.q.dropped); ui_cat(t, v);
         ui_cat(t, "  CMD REFUSED "); ui_int(v, (int32_t)eng.cmd.refused); ui_cat(t, v);
-        cv_text(6, 82, &FONT_S, t, C_GRAY);
+        ui_fit(6, 82, 234 - (6), &FONT_S, t, C_GRAY);
         {
             static const char *const UH[3] = {"DEVICE", "HOST: LOOKING", "HOST: CONNECTED"};
             int st = plat_usb_host_state();
             t[0] = 0; ui_cat(t, "USB "); ui_cat(t, UH[st >= 0 && st <= 2 ? st : 0]);
-            cv_text(6, 98, &FONT_S, t, st == USBH_CONNECTED ? C_HI : C_GRAY);
+            ui_fit(6, 98, 234 - (6), &FONT_S, t, st == USBH_CONNECTED ? C_HI : C_GRAY);
         }
         break;
     }
@@ -985,9 +986,11 @@ static void lights(void)
 
 void app_ui_init(void)
 {
-    palette_set(1); /* AMBER */
+    ui_theme(UI_THEME_ACID);
     if (set.link_usb_host) plat_usb_host(1); /* (main loop only: plat.h) */
     lcd_fill(0, 0, 240, 240, C_BLACK);
+    ui_splash("BREAK", "SURGEON", "JUNGLE OS " APP_VERSION "  -  BREAKS AND DRUMS");
+    ui.splash_until = plat_ms() + 1200u;
     ui.redraw = 1;
     if (load_report & 1u) app_say("SETTINGS", "DEFAULTS LOADED");
 }
@@ -1000,6 +1003,10 @@ void app_frame(void)
     uint32_t now = plat_ms();
     input();
     lights();
+    if (ui.splash_until) {
+        if (now < ui.splash_until) return;
+        ui.splash_until = 0;
+    }
     if (eng.clock.abs_step != last_step) { last_step = eng.clock.abs_step; ui.redraw = 1; }
     if (ui.msg_until && now >= ui.msg_until) { ui.msg_until = 0; ui.redraw = 1; }
     if (ui.hi_until && now >= ui.hi_until) { ui.hi_until = 0; ui.redraw = 1; }

@@ -18,7 +18,65 @@
 #define UI_FOOT_Y 186
 #define UI_FOOT_H 54
 
+#ifdef PLAT_HOST
+#include <stdio.h>
+#endif
+
+/* ----------------------------------------------------------- themes --- */
+/* (0.3) the drum & bass look: near-black neutrals, one loud hue per instrument. BREAK SURGEON: acid lime values over
+ * hazard yellow; ABYSS ENGINE: abyss cyan values over neuro violet. The red is the alarm (and PANIC). */
+enum { UI_THEME_ACID, UI_THEME_ABYSS };
+#define UI_RED RGB(255, 40, 70)
+static void ui_theme(int which)
+{
+    static const uint16_t T[2][5] = {
+        {RGB(30, 30, 26), RGB(74, 76, 62), RGB(152, 154, 140), RGB(255, 204, 0), RGB(206, 255, 0)},
+        {RGB(24, 26, 38), RGB(64, 68, 96), RGB(142, 148, 172), RGB(178, 112, 255), RGB(0, 232, 255)},
+    };
+    uint32_t k;
+    for (k = 0; k < 5u; k++) pal[k] = T[which & 1][k];
+}
+
+/* diagonal hazard stripes in a rectangle (canvas coordinates): c on black, 4 px bands at 45 degrees */
+static void ui_stripes(int32_t x0, int32_t y0, int32_t w, int32_t h, uint16_t c)
+{
+    int32_t x, y;
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) cv_pset(x0 + x, y0 + y, ((x0 + x + y0 + y) >> 2) & 1 ? c : C_BLACK);
+}
+
 /* ------------------------------------------------------------ text --- */
+/* (0.3) text that never runs past its box: drawn in f if it fits in maxw, else in the next smaller font (L, M, B, XS,
+ * S, XS, T; L, M and T have capitals only, so lowercase text skips them), centred on the line f would take; if even the
+ * smallest is too wide, it is cut (the host simulator says so on stderr: tools/build_all.sh fails on it). Returns
+ * the x after the text. */
+static const felucca_font_t *const UI_FONTS[6] = {&FONT_L, &FONT_M, &FONT_B, &FONT_S, &FONT_XS, &FONT_T};
+static int32_t ui_fit(int32_t x, int32_t y, int32_t maxw, const felucca_font_t *f, const char *s, uint16_t c)
+{
+    uint32_t i = 0, k, n = 0, lower = 0;
+    const felucca_font_t *g = f;
+    char cut[48];
+    for (k = 0; s[k]; k++) if ((uint8_t)s[k] > 95u) lower = 1;
+    while (i < 6u && UI_FONTS[i] != f) i++;
+    for (; i < 6u; i++) {
+        if (lower && UI_FONTS[i]->last < 126u) continue;
+        g = UI_FONTS[i];
+        if (text_w(g, s) <= maxw) return cv_text(x, y + ((int32_t)f->h - (int32_t)g->h) / 2, g, s, c);
+    }
+    /* cut to fit */
+    for (k = 0; s[k] && k < sizeof cut - 1u; k++) {
+        cut[k] = s[k];
+        cut[k + 1u] = 0;
+        if (text_w(g, cut) > maxw) break;
+        n = k + 1u;
+    }
+    cut[n] = 0;
+#ifdef PLAT_HOST
+    fprintf(stderr, "ui: cut \"%s\" to \"%s\" (%d px)\n", s, cut, (int)maxw);
+#endif
+    return cv_text(x, y + ((int32_t)f->h - (int32_t)g->h) / 2, g, cut, c);
+}
+
 static void ui_cat(char *d, const char *s)
 {
     while (*d) d++;
@@ -56,19 +114,21 @@ static void ui_pct(char *b, float v01)
  * scene, a fill, RETURN) is from landing, drawn as a bar along the bottom (< 0: nothing queued) */
 static void ui_header2(const char *page, const char *mid, const char *right, int alarm, float pending)
 {
-    int32_t w;
+    int32_t w, y, xr, xm;
     cv_begin(240, UI_HEAD_H, C_BLACK);
+    /* the page's tab: a slanted block (its right edge leans), the name in black */
     w = text_w(&FONT_B, page) + 10;
-    cv_rect(0, 0, w, UI_HEAD_H - 2, C_HI);
-    cv_text(5, 4, &FONT_B, page, C_BLACK);
-    if (mid) cv_text(w + 6, 6, &FONT_S, mid, C_AMB);
-    if (right) cv_text(236 - text_w(&FONT_S, right), 6, &FONT_S, right, alarm ? C_WHITE : C_GRAY);
-    if (alarm) cv_rect(0, UI_HEAD_H - 2, 240, 2, RGB(232, 76, 60));
-    else cv_rect(0, UI_HEAD_H - 1, 240, 1, C_LINE);
-    if (pending >= 0.0f) {
-        cv_rect(0, UI_HEAD_H - 3, 240, 3, C_LINE);
-        cv_rect(0, UI_HEAD_H - 3, (int32_t)(240.0f * jo_clampf(pending, 0.0f, 1.0f)), 3, C_WHITE);
-    }
+    if (w > 112) w = 112;
+    for (y = 0; y < UI_HEAD_H - 4; y++) cv_rect(0, y, w + (UI_HEAD_H - 4 - y) / 2, 1, alarm ? UI_RED : C_HI);
+    ui_fit(5, 3, w - 6, &FONT_B, page, C_BLACK);
+    xm = w + UI_HEAD_H / 2 + 2;
+    xr = 236 - (right ? text_w(&FONT_S, right) : 0);
+    if (right && xr < xm + 60) xr = xm + 60;            /* the right text gives way first */
+    if (mid) ui_fit(xm, 5, xr - xm - 4, &FONT_S, mid, C_AMB);
+    if (right) ui_fit(xr, 5, 236 - xr, &FONT_S, right, alarm ? C_WHITE : C_GRAY);
+    /* the bottom edge: hazard stripes, red ones on an alarm, a white countdown over them while a change waits */
+    ui_stripes(0, UI_HEAD_H - 3, 240, 3, alarm ? UI_RED : C_DIM);
+    if (pending >= 0.0f) cv_rect(0, UI_HEAD_H - 3, (int32_t)(240.0f * jo_clampf(pending, 0.0f, 1.0f)), 3, C_WHITE);
     cv_blit(0, 0);
 }
 static void ui_header(const char *page, const char *mid, const char *right, int alarm)
@@ -87,12 +147,17 @@ typedef struct {
 /* the white key each black key sits right of (F3 .. G5: F# G# A# C# D# F# G# A# C# D# F#) */
 static const uint8_t UI_BLACK_AT[11] = {0, 1, 2, 4, 5, 7, 8, 9, 11, 12, 14};
 
+/* a run's label, centred over it; it may reach 12 px past either end of the run (a one-key run's label is wider than
+ * the key), never past the screen */
 static void ui_label(int32_t x0, int32_t x1, int32_t y, const char *t, uint16_t c)
 {
-    int32_t w = text_w(&FONT_T, t), x = (x0 + x1 - w) / 2;
+    int32_t room = x1 - x0 + 24, w = text_w(&FONT_T, t), x;
+    if (room > 238) room = 238;
+    if (w > room) w = room;
+    x = (x0 + x1 - w) / 2;
     if (x < 1) x = 1;
     if (x + w > 239) x = 239 - w;
-    cv_text(x, y, &FONT_T, t, c);
+    ui_fit(x, y, w, &FONT_T, t, c);
 }
 
 /* enc: what SELECT, ALGO and PRESET do (0: nothing); layer: 0 plain, 1 SEL held, 2 SAVE held */
@@ -106,8 +171,9 @@ static void ui_strip(const char *const enc[3], const ui_kg_t *g, uint32_t n, int
     /* the encoders */
     for (i = 0; i < 3u; i++) {
         int32_t x = 2 + (int32_t)i * 80;
+        int32_t x1 = 2 + (int32_t)(i + 1u) * 80 - 4;
         x = cv_text(x, 2, &FONT_T, EN[i], C_DIM) + 3;
-        cv_text(x, 2, &FONT_T, enc[i] ? enc[i] : "-", enc[i] ? (layer ? C_WHITE : C_AMB) : C_DIM);
+        ui_fit(x, 2, x1 - x, &FONT_T, enc[i] ? enc[i] : "-", enc[i] ? (layer ? C_WHITE : C_AMB) : C_DIM);
     }
     if (layer) { /* the layer's name, so it is clear why the strip changed */
         const char *t = layer == 1 ? "SEL HELD" : "SAVE HELD";
@@ -160,20 +226,22 @@ static void ui_macros(const char *const name[4], const float v[4], const char *c
         int32_t x = 2 + (int32_t)i * 60, w = 56, bar;
         int lit = (int)i == hi;
         char t[16];
+        int32_t k;
         cv_rect(x, 0, w, UI_FOOT_H - 3, lit ? C_LINE : C_BLACK);
-        cv_rect(x, 0, w, 1, C_DIM);
-        cv_text(x + 3, 2, &FONT_XS, name[i] ? name[i] : "", lit ? C_WHITE : C_GRAY);
-        /* the bar */
-        cv_rect(x + 3, 19, w - 6, 6, C_LINE);
-        bar = (int32_t)((float)(w - 6) * jo_clampf(v[i], 0.0f, 1.0f) + 0.5f);
-        cv_rect(x + 3, 19, bar, 6, lit ? C_WHITE : C_HI);
-        if (vtext && vtext[i]) {
-            cv_text(x + 3, 30, &FONT_B, vtext[i], lit ? C_WHITE : C_AMB);
-        } else {
+        cv_rect(x, 0, w, 2, lit ? C_WHITE : C_DIM);           /* the top edge, lit while turned */
+        for (k = 0; k < 6; k++) cv_rect(x + w - 6 + k, k, 6 - k, 1, C_BLACK); /* the cut corner */
+        ui_fit(x + 3, 3, w - 9, &FONT_XS, name[i] ? name[i] : "", lit ? C_WHITE : C_GRAY);
+        /* the value, big */
+        if (vtext && vtext[i]) ui_fit(x + 3, 18, w - 6, &FONT_M, vtext[i], lit ? C_WHITE : C_HI);
+        else {
             t[0] = 0;
             ui_pct(t, v[i]);
-            cv_text(x + 3, 30, &FONT_B, t, lit ? C_WHITE : C_AMB);
+            ui_fit(x + 3, 18, w - 6, &FONT_M, t, lit ? C_WHITE : C_HI);
         }
+        /* the bar */
+        cv_rect(x + 3, 44, w - 6, 5, C_LINE);
+        bar = (int32_t)((float)(w - 6) * jo_clampf(v[i], 0.0f, 1.0f) + 0.5f);
+        cv_rect(x + 3, 44, bar, 5, lit ? C_WHITE : C_AMB);
     }
     cv_blit(0, UI_FOOT_Y);
 }
@@ -201,7 +269,7 @@ static void ui_meter(int32_t x, int32_t y, int32_t w, float v, uint16_t c)
 {
     int32_t b = (int32_t)((float)w * jo_clampf(v, 0.0f, 1.0f));
     cv_rect(x, y, w, 5, C_LINE);
-    cv_rect(x, y, b, 5, v >= 0.94f ? RGB(232, 76, 60) : c);
+    cv_rect(x, y, b, 5, v >= 0.94f ? UI_RED : c);
 }
 
 /* ----------------------------------------------------------- input --- */
@@ -272,4 +340,23 @@ static uint32_t ui_black_bit(int b)
     for (k = 0; k < NKEYS; k++)
         if (ui_black(k) == b) return 1u << k;
     return 0;
+}
+
+/* ----------------------------------------------------------- splash --- */
+/* (0.3) the start screen: the name in two big lines between hazard bars (drawn once at boot, held by the app) */
+static void ui_splash(const char *line1, const char *line2, const char *sub)
+{
+    int32_t b;
+    for (b = 0; b < 240; b += 48) { /* five bands (the canvas holds a part of the screen at a time) */
+        cv_begin(240, 48, C_BLACK);
+        if (b == 0) ui_stripes(0, 16, 240, 14, C_HI);
+        if (b == 192) ui_stripes(0, 18, 240, 14, C_HI);
+        if (b == 48) ui_fit(12, 10, 216, &FONT_L, line1, C_HI);
+        if (b == 96) ui_fit(12, 0, 216, &FONT_L, line2, C_HI);
+        if (b == 144) {
+            cv_rect(12, 0, 216, 2, C_AMB);
+            ui_fit(12, 10, 216, &FONT_XS, sub, C_GRAY);
+        }
+        cv_blit(0, (uint32_t)b);
+    }
 }

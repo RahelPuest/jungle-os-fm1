@@ -52,6 +52,28 @@ PY
 mkdir -p "$OUT/live"
 python3 base/tools/manual_html.py docs/user-guide/live-performance.md "$OUT/live/index.html" --name "JUNGLE OS" \
     --repo "$REPO" --tagline "the live set"
+# JUNGLE OS's look (site/dnb.css) linked into every page, with the page's instrument for its colours
+cp site/dnb.css "$OUT/dnb.css"
+python3 - "$OUT" <<'PY'
+import os, re, sys
+out = sys.argv[1]
+for dp, _, fs in os.walk(out):
+    for f in fs:
+        if not f.endswith(".html"):
+            continue
+        p = os.path.join(dp, f)
+        rel = os.path.relpath(p, out)
+        fw = "bs" if rel.startswith("break-surgeon") else "ab" if rel.startswith("abyss-engine") else "os"
+        up = "../" * rel.count(os.sep)
+        s = open(p, encoding="utf-8").read()
+        if "dnb.css" in s:
+            continue
+        s, n = re.subn(r"</head>", f'<link rel="stylesheet" href="{up}dnb.css">\n</head>', s, count=1)
+        s, m = re.subn(r"<html(\s|>)", f'<html data-fw="{fw}"\\1', s, count=1)
+        if not (n and m):
+            sys.exit(f"make_site: {p}: no <html> or </head> to style")
+        open(p, "w", encoding="utf-8").write(s)
+PY
 touch "$OUT/.nojekyll"
 (cd release && shasum -a 256 *.fwsc > SHA256SUMS)
 echo "make_site: release/site ready for $V"

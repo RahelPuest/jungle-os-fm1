@@ -1,5 +1,6 @@
 # Abyss Engine in fm1-base's host simulator (tests/host/README.md)
 wait 600
+shot ab_splash.png
 wav ab_smoke.wav
 tap PLAY
 wait 2000
@@ -58,3 +59,135 @@ expect store_writes >0
 reboot
 wait 600
 shot ab_after_reboot.png
+
+# the tour: every page, plain and with SEL / SAVE held (tools/build_all.sh fails on any text cut to fit)
+tap PLAY
+wait 400
+tap HOME
+wait 150
+press SEL
+wait 150
+release SEL
+press SAVE
+wait 150
+release SAVE
+wait 100
+tap SEQ
+wait 150
+press SEL
+wait 150
+release SEL
+press SAVE
+wait 150
+release SAVE
+wait 100
+tap EDIT
+wait 150
+press SEL
+wait 150
+release SEL
+press SAVE
+wait 150
+release SAVE
+wait 100
+tap FX
+wait 150
+press SEL
+wait 150
+release SEL
+press SAVE
+wait 150
+release SAVE
+wait 100
+tap ARP
+wait 150
+press SEL
+wait 150
+release SEL
+press SAVE
+wait 150
+release SAVE
+wait 100
+tap GLO
+wait 150
+press SEL
+wait 150
+release SEL
+press SAVE
+wait 150
+release SAVE
+wait 100
+tap SEQ
+tapkey b0
+wait 120
+tapkey b1
+wait 120
+tapkey b2
+wait 120
+tap HOME
+turn SELECT 1
+wait 120
+turn SELECT 1
+wait 120
+tap EDIT
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn SELECT -1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn SELECT -1
+wait 120
+tap HOME
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn K1 100
+wait 150
+tap PLAY
+wait 300

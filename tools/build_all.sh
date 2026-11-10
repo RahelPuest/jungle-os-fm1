@@ -14,6 +14,8 @@ for fw in break-surgeon abyss-engine; do
     (cd firmware/$fw && python3 ../../base/tools/build.py . --host | grep -E '^host|error' || true)
     [ "$1" = "--no-device" ] || (cd firmware/$fw && python3 ../../base/tools/build.py . | grep -E '^  (ok|FAIL)|^package|rror')
 done
-firmware/break-surgeon/build/host/breaksurgeon_host tests/host/bs_smoke.txt "$OUT/bs"
-firmware/abyss-engine/build/host/abyssengine_host tests/host/ab_smoke.txt "$OUT/ab"
+# (the screens' text is fitted to its boxes; a text cut to fit is reported on stderr and fails the build)
+firmware/break-surgeon/build/host/breaksurgeon_host tests/host/bs_smoke.txt "$OUT/bs" 2> "$OUT/bs/stderr.txt" || { cat "$OUT/bs/stderr.txt"; exit 1; }
+firmware/abyss-engine/build/host/abyssengine_host tests/host/ab_smoke.txt "$OUT/ab" 2> "$OUT/ab/stderr.txt" || { cat "$OUT/ab/stderr.txt"; exit 1; }
+if grep -h "^ui: cut" "$OUT/bs/stderr.txt" "$OUT/ab/stderr.txt"; then echo "build_all: text cut to fit (above)"; exit 1; fi
 echo "all done: packages in firmware/*/build/*.fwsc, screenshots and WAVs in $OUT"

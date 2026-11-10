@@ -1,0 +1,109 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+/* JUNGLE OS's look on top of fm1-base's pages (the front pages, the manuals, the installer, the emulator):
+   near-black, one loud hue per instrument as on the FM-1's screen (BREAK SURGEON acid lime over hazard yellow,
+   ABYSS ENGINE abyss cyan over neuro violet), hazard stripes, big condensed capitals. tools/make_site.sh links it
+   into every page and sets <html data-fw="bs" | "ab" | "os">. The pages' own colours are CSS variables: this
+   sets them (with !important, as the pages set theirs again for light and dark). */
+@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;600&display=swap");
+
+:root {
+  --jo-bg: #08080a; --jo-surface: #131317; --jo-rule: #2b2b31; --jo-text: #ecece6; --jo-muted: #a0a0a8;
+  --jo-acc: #d2ff00; --jo-acc2: #ffcc00; --jo-on-acc: #000;
+  color-scheme: dark;
+}
+:root[data-fw="ab"] { --jo-acc: #00e8ff; --jo-acc2: #b874ff; }
+:root[data-fw="os"] { --jo-acc: #d2ff00; --jo-acc2: #00e8ff; }
+
+/* fm1-base's page variables: the manual and front pages, the installer, the emulator */
+:root, :root[data-theme], :root:not([data-theme="light"]) {
+  --paper: var(--jo-bg) !important; --sheet: var(--jo-surface) !important; --rule: var(--jo-rule) !important;
+  --ink: var(--jo-text) !important; --muted: var(--jo-muted) !important;
+  --hot: var(--jo-acc) !important; --hot-ink: var(--jo-acc) !important; --cool: var(--jo-acc2) !important;
+  --hot-t: color-mix(in srgb, var(--jo-acc) 16%, transparent) !important;
+  --cool-t: color-mix(in srgb, var(--jo-acc2) 12%, transparent) !important;
+  --bg: var(--jo-bg) !important; --fg: var(--jo-text) !important; --dim: var(--jo-muted) !important;
+  --accent: var(--jo-acc) !important; --on-accent: var(--jo-on-acc) !important; --bad: #ff2846 !important;
+  --ground: var(--jo-bg) !important; --card: var(--jo-surface) !important; --teal: var(--jo-acc2) !important;
+  --focus: var(--jo-acc2) !important;
+}
+
+html { background: var(--jo-bg); }
+body {
+  background-color: var(--jo-bg) !important;
+  /* faint scanlines, like a CRT in a dark room */
+  background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 3px) !important;
+  color: var(--jo-text) !important;
+  font-family: "Barlow", "Helvetica Neue", Arial, sans-serif !important;
+}
+
+/* the bar at the top, over hazard tape */
+header.site, .site {
+  border-bottom: 0 !important; position: relative; padding-bottom: 14px !important;
+}
+header.site::after, .site::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 8px;
+  background: repeating-linear-gradient(-45deg, var(--jo-acc) 0 10px, transparent 10px 20px);
+}
+.site .home, a.home {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--jo-acc) !important;
+}
+.site nav a { font-family: "Barlow Condensed", sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+
+h1, h2, h3, th {
+  font-family: "Barlow Condensed", "Arial Narrow", Impact, sans-serif !important; text-transform: uppercase;
+}
+h1 {
+  font-weight: 800 !important; font-size: clamp(2.6rem, 9vw, 4.6rem) !important; line-height: .92 !important;
+  letter-spacing: -.005em !important; color: var(--jo-acc);
+  text-shadow: 3px 0 0 var(--jo-acc2), -2px 0 0 rgba(255, 40, 70, .55); /* the offset print of a rave flyer */
+  margin-bottom: 1rem !important;
+}
+h2 {
+  font-weight: 800 !important; font-size: 1.7rem !important; letter-spacing: .02em;
+  border-top: 0 !important; padding: .2rem 0 .2rem .7rem !important; border-left: 8px solid var(--jo-acc);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--jo-acc) 14%, transparent), transparent 70%);
+}
+h2 .num { color: var(--jo-acc2) !important; }
+h3 { font-weight: 600 !important; letter-spacing: .04em; color: var(--jo-acc2); }
+
+a { color: var(--jo-acc) !important; text-decoration-color: var(--jo-acc2) !important; }
+a:hover { background: var(--jo-acc) !important; color: var(--jo-on-acc) !important; }
+strong { color: #fff; }
+li::marker { color: var(--jo-acc) !important; }
+
+code { background: var(--jo-surface) !important; color: var(--jo-acc); }
+pre { background: var(--jo-surface) !important; border-left: 4px solid var(--jo-acc2); border-radius: 0 !important; }
+
+th { color: var(--jo-on-acc) !important; background: var(--jo-acc); border-bottom: 0 !important; padding-left: .5rem !important; font-weight: 800 !important; }
+td { border-bottom-color: var(--jo-rule) !important; padding-left: .5rem !important; }
+tbody tr:nth-child(even) td { background: rgba(255, 255, 255, .025); }
+
+.callout, .status, details { background: var(--jo-surface) !important; border-radius: 0 !important; border-left: 4px solid var(--jo-acc2) !important; }
+
+/* the screenshots: pixel-sharp, black-framed, a hard offset shadow in the second colour */
+figure img, figure.shot img {
+  image-rendering: pixelated; border-radius: 0 !important;
+  box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--jo-acc), 8px 8px 0 4px var(--jo-acc2) !important;
+}
+figure { margin-bottom: 1.4rem !important; }
+figcaption { color: var(--jo-muted) !important; font-size: .85rem; }
+
+/* buttons (installer, emulator) */
+button, .button, input[type="button"], input[type="submit"] {
+  font-family: "Barlow Condensed", sans-serif !important; font-weight: 800 !important; text-transform: uppercase;
+  letter-spacing: .06em; border-radius: 0 !important;
+}
+
+::selection { background: var(--jo-acc); color: #000; }
+:focus-visible { outline: 3px solid var(--jo-acc2) !important; outline-offset: 2px; }
+
+/* the emulator's panel: its lit buttons and keys in the instrument's colour, the switch as a hazard-lit block */
+:root {
+  --panel-lit: var(--jo-acc); --panel-lit-ink: #000;
+  --panel-lit-white: var(--jo-acc); --panel-lit-black: var(--jo-acc2);
+}
+.start button { background: var(--jo-acc) !important; color: #000 !important; border-radius: 0 !important;
+  font-family: "Barlow Condensed", sans-serif !important; font-weight: 800 !important; text-transform: uppercase;
+  box-shadow: 6px 6px 0 var(--jo-acc2); }
+.held .btnface, .held .keyface { stroke: var(--jo-acc2) !important; }
