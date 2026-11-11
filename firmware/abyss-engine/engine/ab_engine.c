@@ -3,7 +3,7 @@
 #include "ab_engine.h"
 
 const char *const ab_track_name[AB_NTRACKS] = {"BASS", "STAB", "PAD"};
-enum { C_PLAY, C_BPM, C_NOTE, C_STAB, C_PAD, C_PATTERN, C_SCENE, C_PANIC, C_MUTE, C_FILL, C_RETURN, C_VAR, C_FILLT };
+enum { C_PLAY, C_BPM, C_NOTE, C_STAB, C_PAD, C_PATTERN, C_SCENE, C_PANIC, C_MUTE, C_FILL, C_RETURN, C_VAR, C_FILLT, C_GEST };
 
 /* ----------------------------------------------------------- the graph --- */
 static const jg_param_t FMP[JN_NPARAMS] = {
@@ -117,6 +117,8 @@ const uint8_t AB_FORMS[AB_NFORMS][AB_CR_BARS] = {{0, 0, 0, 0}, {0, 1, 0, 2}, {0,
 const char *const ab_fx_name[AB_NFX] = {"NONE", "OCT UP", "OCT DOWN", "FILTER DIVE", "WOBBLE", "STUTTER", "TAPE STOP",
                                         "BITE MAX", "SUB ONLY"};
 const char *const ab_fill_name[AB_NFILLS] = {"ROLLS", "OCTAVES", "DROP OUT", "SLIDE DOWN"};
+const char *const ab_answer_name[AB_NANS] = {"ECHO", "INVERT", "RETRO", "DISPLACE", "OCT DOWN", "SPARSE"};
+const char *const ab_curve_name[AB_NCURVES] = {"OFF", "REC", "PLAY"};
 
 /* is a fill playing at 16th abs */
 static int fill_at(const ab_engine_t *e, uint32_t abs)
@@ -127,6 +129,7 @@ static int fill_at(const ab_engine_t *e, uint32_t abs)
 /* the variation 16th abs plays: a link fill's answer (FILL ANSWERS: C), the FORM's bar, or the one picked */
 int ab_cr_part(const ab_engine_t *e, uint32_t abs)
 {
+    if (e->duet_answer && e->ans_valid && (abs >> 4) == e->ans_bar) return 2; /* (0.6) ANSWER ME: C's sound */
     if (e->answer_on && !js_before(abs, e->answer_start) && js_before(abs, e->answer_end)) return 2;
     if (e->form != AB_FORM_OFF) return AB_FORMS[e->form % AB_NFORMS][(abs >> 4) % AB_CR_BARS];
     return e->var_sel % AB_NVAR;
@@ -150,7 +153,12 @@ void ab_set_phrase(ab_engine_t *e, int bars)
     e->seq.phrase = e->phrase;
 }
 
-void ab_set_perf(ab_engine_t *e, int fx) { e->perf = (uint8_t)(fx > 0 && fx < AB_NFX ? fx : AB_FX_NONE); }
+/* (0.6) the player's FX; the render plays it, or GESTURE ECHO's when none is held */
+void ab_set_perf(ab_engine_t *e, int fx)
+{
+    e->perf_user = (uint8_t)(fx > 0 && fx < AB_NFX ? fx : AB_FX_NONE);
+    e->perf = e->perf_user ? e->perf_user : e->perf_echo;
+}
 
 void ab_sound_get(const ab_engine_t *e, ab_sound_state_t *s)
 {
@@ -180,8 +188,9 @@ static const js_track_t *bass_src(const ab_engine_t *e, uint32_t abs)
 static void patch_update(ab_engine_t *e)
 {
     uint32_t i;
-    float bite = e->perf == AB_FX_BITE ? 1.0f : e->bite_lock >= 0.0f ? e->bite_lock : e->bite;
-    float target = e->morph_lock >= 0 ? (float)e->morph_lock * (1.0f / 255.0f) : e->morph;
+    float bite = e->perf == AB_FX_BITE ? 1.0f : e->bite_lock >= 0.0f ? e->bite_lock : jo_clampf(e->bite + e->echo_off[2], 0.0f, 1.0f);
+    float target = e->morph_lock >= 0 ? (float)e->morph_lock * (1.0f / 255.0f) : jo_clampf(e->morph + e->echo_off[0], 0.0f, 1.0f);
+    if (e->en.value < 1.0f) bite *= 0.4f + 0.6f * e->en.value; /* (0.6) less ENERGY: less BITE */
     e->morph_s += (target - e->morph_s) * (e->morph_lock >= 0 ? 0.5f : 0.15f); /* ~20 ms knob smoothing */
     int resp = e->cr_play ? e->cr[(e->cr_play - 1u) % (AB_NVAR - 1u)].node : -1;
     if (resp >= 0 && (uint32_t)resp < e->fm.nnodes) jg_eval_node(&e->fm, (uint32_t)resp, &e->fv);
@@ -197,11 +206,14 @@ static void patch_update(ab_engine_t *e)
     e->patch.p[JN_P_CUTOFF] = jo_minf(e->patch.p[JN_P_CUTOFF] * jo_exp2f(bite * 1.5f), 14000.0f);
     e->patch.p[JN_P_FOLD] = jo_clampf(e->patch.p[JN_P_FOLD] + 0.3f * bite, 0.0f, 1.0f);
     e->patch.p[JN_P_FORMANT] = jo_clampf(e->patch.p[JN_P_FORMANT] + 0.2f * bite, 0.0f, 1.0f);
-    e->patch.motion = e->motion;
-    e->patch.coupling = 0.3f + 0.7f * e->motion;
-    /* (0.5) GLIDE, and the performance FX that shape the patch */
-    if (e->glide_amt != 0.5f)
-        e->patch.p[JN_P_GLIDE] = jo_clampf(e->patch.p[JN_P_GLIDE] * jo_exp2f(4.0f * (e->glide_amt - 0.5f)), 0.001f, 0.3f);
+    {
+        float mo = jo_clampf(e->motion + e->echo_off[1], 0.0f, 1.0f), gl = jo_clampf(e->glide_amt + e->echo_off[3], 0.0f, 1.0f);
+        e->patch.motion = mo;
+        e->patch.coupling = 0.3f + 0.7f * mo;
+        /* (0.5) GLIDE, and the performance FX that shape the patch */
+        if (gl != 0.5f)
+            e->patch.p[JN_P_GLIDE] = jo_clampf(e->patch.p[JN_P_GLIDE] * jo_exp2f(4.0f * (gl - 0.5f)), 0.001f, 0.3f);
+    }
     if (e->perf == AB_FX_DIVE) { /* the low-pass falls five octaves over a bar */
         float bar = js_clock_samples_per_step(&e->clock) * 16.0f, k = jo_minf((float)e->perf_n / bar, 1.0f);
         e->patch.p[JN_P_CUTOFF] = jo_maxf(e->patch.p[JN_P_CUTOFF] * jo_exp2f(-5.0f * k), 80.0f);
@@ -266,6 +278,12 @@ void ab_default_patterns(ab_engine_t *e)
         t->s[0].data = 0;
         t->s[16].flags = JS_ON;
         t->s[16].data = p == 2 ? 3 : 5;
+    }
+    { /* (0.6) every step's ENERGY level from its role (at full ENERGY they all play, as before) */
+        uint8_t keep = e->cur_pat, k;
+        for (p = 0; p < AB_NPATTERNS; p++)
+            for (k = 0; k < AB_NTRACKS; k++) e->cur_pat = (uint8_t)p, ab_auto_levels(e, k);
+        e->cur_pat = keep;
     }
 }
 
@@ -390,14 +408,86 @@ static void fire_(ab_engine_t *e, const js_event_t *ev)
     }
 }
 
+/* (0.6) ANSWER ME: the bar you played (cap_*) transformed into the answer for bar `bar` */
+static void duet_build(ab_engine_t *e, uint32_t bar)
+{
+    uint32_t i, k = 0;
+    for (i = 0; i < 16u; i++) e->ans_note[i] = 0, e->ans_vel[i] = 0;
+    for (i = 0; i < 16u; i++) {
+        uint32_t to = i;
+        int d = e->cap_note[i];
+        if (!d) continue;
+        switch (e->duet_xform) {
+        case AB_ANS_INVERT: /* mirrored around the root, on the scale */
+            d = 64 + jh_snap(e->root, e->scale, e->root - (d - 64)) - e->root;
+            break;
+        case AB_ANS_RETRO: to = 15u - i; break;
+        case AB_ANS_DISPLACE: to = (i + 2u) & 15u; break;
+        case AB_ANS_OCT_DOWN: d -= 12; break;
+        case AB_ANS_SPARSE: if (k++ & 1u) continue; break;
+        default: break;
+        }
+        e->ans_note[to] = (uint8_t)jo_clampi(d, 28, 110);
+        e->ans_vel[to] = e->cap_vel[i];
+    }
+    e->ans_bar = bar;
+    e->ans_valid = 1;
+    e->cap_n = 0;
+}
+
+uint16_t ab_pocket_mask(const ab_engine_t *e, uint32_t bar)
+{
+    if (bar == e->kick_bar + 1u) return e->kick_cur; /* evaluated just before the bar's turn: the bar so far */
+    if (bar == e->kick_bar) return e->kick_mask;
+    return 0;
+}
+
+/* (0.6) POCKET: a bass step on a kick moves to the next gap; the drums' DENSITY thins (high) or fills (low) the
+ * bass. Returns 0 to drop the step */
+static int pocket(ab_engine_t *e, uint32_t abs, js_step_t *st)
+{
+    uint32_t i = abs & 15u, h = js_hash(e->seq.pat->seed, abs, 0x50Cu, 3u) % 100u;
+    uint16_t mask = ab_pocket_mask(e, abs >> 4);
+    int kick = (mask >> i) & 1u, on = (st->flags & JS_ON) != 0;
+    float d = e->drum_density, a = e->pocket_amt;
+    if (kick) {
+        if (on) e->pocket_carry = *st, e->pocket_carry_on = 1; /* to the next gap */
+        return 0;
+    }
+    if (!on && e->pocket_carry_on) { *st = e->pocket_carry; on = 1; }
+    e->pocket_carry_on = 0;
+    if (on && i != 0u && d > 0.5f && (float)h < a * (d - 0.5f) * 200.0f) return 0;
+    if (!on && d < 0.5f && (float)h < a * (0.5f - d) * 120.0f && e->pocket_last) {
+        js_step_clear(st);
+        st->flags = JS_ON;
+        st->data = e->pocket_last;
+        st->vel = 90;
+        on = 1;
+    }
+    if (on) e->pocket_last = st->data;
+    return 1;
+}
+
 static int xform(void *ctx, uint32_t t, uint32_t abs, js_step_t *st)
 {
     ab_engine_t *e = (ab_engine_t *)ctx;
+    if (t == AB_T_BASS && e->duet_answer) { /* (0.6) ANSWER ME: your bars are yours, the machine's are its answers */
+        uint32_t bar = abs >> 4, i = abs & 15u;
+        if (i == 0u && e->cap_n && e->cap_bar + 1u == bar) duet_build(e, bar);
+        if (!(e->ans_valid && e->ans_bar == bar)) return 0;
+        js_step_clear(st);
+        if (!e->ans_note[i]) return 0;
+        st->flags = JS_ON;
+        st->data = e->ans_note[i];
+        st->vel = e->ans_vel[i];
+        return 1;
+    }
     if (t == AB_T_BASS) { /* a variation's bar plays its own line's step */
         const js_track_t *src = bass_src(e, abs);
         if (src != &e->seq.pat->t[AB_T_BASS]) *st = src->s[abs % (src->len ? src->len : 16u)];
         /* LOCK TO KICK: the link's kicks play the bass (ab_link_kick), the steps only give it notes */
         if (e->lock_kick && jl_alive(&e->link, e->ms)) return 0;
+        if (e->pocket_amt > 0.0f && jl_alive(&e->link, e->ms) && !pocket(e, abs, st)) return 0;
     }
     if (t == AB_T_BASS && fill_at(e, abs) && (st->flags & JS_ON)) {
         switch (e->fill_type) {
@@ -461,7 +551,48 @@ static void apply_scene(ab_engine_t *e, const ab_scene_t *s, int pattern_part)
 static void on_step(void *ctx, uint32_t abs, uint32_t off)
 {
     ab_engine_t *e = (ab_engine_t *)ctx;
+    uint32_t ph = 16u * (e->phrase ? e->phrase : 4u), at = abs % ph, i;
     (void)off;
+    /* (0.6) ENERGY: the curve (REC from the phrase's start), the steps' gate */
+    if (e->en_armed && at == 0u) e->en_armed = 0, e->en.recording = 1, e->en.playing = 0;
+    je_step(&e->en, abs, e->phrase ? e->phrase : 4u);
+    e->seq.energy = je_level(e->en.value);
+    /* (0.6) DUET: the answer's bar over; POCKET's kicks of the bar before; GESTURE ECHO's phrase */
+    if (e->ans_valid && (abs >> 4) > e->ans_bar) e->ans_valid = 0;
+    if ((abs & 15u) == 0u) {
+        uint32_t bar = abs >> 4;
+        if (bar == e->kick_bar + 1u) e->kick_mask = e->kick_cur, e->kick_cur = e->kick_next;
+        else if (bar != e->kick_bar) e->kick_mask = 0, e->kick_cur = e->kick_next;
+        e->kick_next = 0;
+        e->kick_bar = bar;
+    }
+    if (at == 0u) { /* the phrase turns: what was recorded plays, at half depth */
+        float now[4];
+        now[0] = e->morph, now[1] = e->motion, now[2] = e->bite, now[3] = e->glide_amt;
+        e->g_nplay = 0;
+        for (i = 0; i < e->g_nrec; i++) {
+            ab_gest_t g = e->g_rec[i];
+            if (g.type == 0u && g.val) { /* an FX: half as long as it was held */
+                uint32_t k, end = ph;
+                for (k = i + 1u; k < e->g_nrec; k++) if (e->g_rec[k].type == 0u) { end = e->g_rec[k].at; break; }
+                g.end = (uint16_t)(g.at + (end > g.at ? (end - g.at + 1u) / 2u : 1u));
+            }
+            if (g.type || g.val) e->g_play[e->g_nplay++] = g;
+        }
+        for (i = 0; i < 4u; i++) e->g_base_play[i] = e->g_base_rec[i], e->g_base_rec[i] = now[i], e->echo_off[i] = 0.0f;
+        e->g_nrec = 0;
+        e->perf_echo = 0;
+    }
+    if (e->gesture || e->g_nplay) {
+        for (i = 0; i < e->g_nplay; i++) {
+            const ab_gest_t *g = &e->g_play[i];
+            if (g->at != at) continue;
+            if (g->type == 0u) e->perf_echo = g->val, e->perf_echo_end = g->end;
+            else e->echo_off[(g->type - 1u) & 3u] = 0.5f * ((float)g->val * (1.0f / 255.0f) - e->g_base_play[(g->type - 1u) & 3u]);
+        }
+        if (e->perf_echo && at >= e->perf_echo_end) e->perf_echo = 0;
+        if (!e->gesture) e->g_nplay = 0, e->perf_echo = 0;
+    }
     if (e->fill_on && !js_before(abs, e->fill_end)) e->fill_on = 0;
     if (e->answer_on && !js_before(abs, e->answer_end)) e->answer_on = 0;
     e->seq.fill = (uint8_t)fill_at(e, abs + 1u); /* for the next step's trig conditions */
@@ -508,7 +639,11 @@ void ab_init(ab_engine_t *e, int16_t *pool)
     e->tension = 0.2f;
     e->scene_pending = -1;
     e->scene_cur = 2;
-    e->energy = 0.5f;
+    je_init(&e->en);
+    e->en_sent = 0xFFu;
+    e->duet_xform = AB_ANS_ECHO;
+    e->decay_amt = 0.3f;
+    e->kick_bar = 0xFFFFFFF0u;
     e->follow_link = 1;
     e->duck_depth = 0.6f;
     e->cr[0].line = -1, e->cr[0].node = 8;  /* B: A's line as REESE */
@@ -574,6 +709,21 @@ static void do_cmd(ab_engine_t *e, const jo_cmd_t *c)
     case C_BPM: js_clock_set_bpm(&e->clock, c->f); break;
     case C_NOTE:
         if (c->a == AB_PART_BASS) {
+            if (c->c && e->duet_answer && e->clock.running) { /* (0.6) ANSWER ME hears the bar you play */
+                uint32_t pos = e->clock.abs_step + (e->clock.phase >= 0x80000000u ? 1u : 0u), bar;
+                if ((pos >> 4) != (e->clock.abs_step >> 4)) pos = e->clock.abs_step; /* not into the next bar */
+                bar = pos >> 4;
+                if (!(e->ans_valid && e->ans_bar == bar)) {
+                    if (!e->cap_n || e->cap_bar != bar) {
+                        uint32_t k;
+                        for (k = 0; k < 16u; k++) e->cap_note[k] = 0, e->cap_vel[k] = 0;
+                        e->cap_n = 0, e->cap_bar = bar;
+                    }
+                    e->cap_note[pos & 15u] = (uint8_t)jo_clampi((int)c->b - e->root + 64, 28, 110);
+                    e->cap_vel[pos & 15u] = (uint8_t)jo_clampi((int)(c->f * 127.0f + 0.5f), 1, 127);
+                    e->cap_n++;
+                }
+            }
             if (c->c) bass_on(e, (float)c->b, c->f, e->bass_on), e->bass_gate_left = 0xFFFFFFFFu;
             else if (e->last_bass_note == (float)c->b) bass_off(e);
         } else if (c->a == AB_PART_STAB) {
@@ -644,6 +794,15 @@ static void do_cmd(ab_engine_t *e, const jo_cmd_t *c)
         if (!e->clock.running) e->var_sel = e->var_next, e->var_at = 0xFFFFFFFFu;
         else e->var_at = next_boundary(e, e->quant ? 5 : JL_Q_BAR);
         break;
+    case C_GEST: /* (0.6) a knob move for GESTURE ECHO */
+        if (e->gesture && e->clock.running && e->g_nrec < AB_NGEST) {
+            ab_gest_t *g = &e->g_rec[e->g_nrec++];
+            g->at = (uint16_t)(e->clock.abs_step % (16u * (e->phrase ? e->phrase : 4u)));
+            g->end = 0;
+            g->type = (uint8_t)(1u + (c->a & 3u));
+            g->val = c->b;
+        }
+        break;
     case C_RETURN: /* (0.2) back to the base: the mutation and the explore left, the fill ended, MORPH on its node */
         e->fill_on = 0;
         ab_snap(e);
@@ -657,6 +816,11 @@ void ab_link_kick(ab_engine_t *e, uint8_t vel)
 {
     e->link_kicks++;
     jf_duck_trigger(&e->duck, (float)vel * (1.0f / 127.0f));
+    if (e->clock.running) { /* (0.6) POCKET learns where the kicks are, to the nearest 16th */
+        uint32_t pos = e->clock.abs_step + (e->clock.phase >= 0x80000000u ? 1u : 0u);
+        if ((pos >> 4) == e->kick_bar || e->kick_bar == 0xFFFFFFF0u) e->kick_cur |= (uint16_t)(1u << (pos & 15u)), e->kick_bar = pos >> 4;
+        else if ((pos >> 4) == e->kick_bar + 1u) e->kick_next |= (uint16_t)(1u << (pos & 15u));
+    }
     /* (0.5) LOCK TO KICK: the kick plays the bass, the note of its line's step now (or the last one before it) */
     if (e->lock_kick && e->clock.running && e->perf != AB_FX_TAPE) {
         uint32_t abs = e->clock.abs_step, k;
@@ -718,7 +882,8 @@ void ab_link_packet(ab_engine_t *e, uint32_t pkt, uint32_t t24)
         break;
     case JL_EV_FILL_END: e->fill_on = 0; e->answer_on = 0; break;
     case JL_EV_RESET: e->mutated = 0; e->explore_node = -1; e->fill_on = 0; break;
-    case JL_EV_ENERGY: e->energy = (float)ev.a * (1.0f / 127.0f); break;
+    case JL_EV_ENERGY: e->en.knob = (float)ev.a * (1.0f / 127.0f); e->en_sent = ev.a; break; /* (0.6) follow, no echo */
+    case JL_EV_DENSITY: e->drum_density = (float)ev.a * (1.0f / 127.0f); break;
     case JL_EV_ROOT: e->root = (int8_t)(36 + ev.a); break;
     case JL_EV_SCALE: e->scale = ev.a < JH_NSCALES ? ev.a : 0u; break;
     default: break;
@@ -733,7 +898,14 @@ static void render_voices(ab_engine_t *e, uint32_t pos, uint32_t n)
     jn_bass_render(&e->bass, &e->patch, steps, 0.0f, e->b_bass + pos, n);
     jn_sub_render(&e->sub, e->b_sub + pos, n);
     if (e->voice_mode != AB_VOICE_BASS_ONLY) jn_stab_render(&e->stab, &e->stab_p, e->b_l + pos, e->b_r + pos, n);
-    if (e->voice_mode == AB_VOICE_FULL) jn_pad_render(&e->pad, &e->pad_p, e->b_l + pos, e->b_r + pos, n);
+    if (e->voice_mode == AB_VOICE_FULL) {
+        if (e->en.value < 1.0f) { /* (0.6) less ENERGY: a darker pad */
+            jn_pad_patch_t pp = e->pad_p;
+            pp.darkness = jo_minf(pp.darkness + 0.4f * (1.0f - e->en.value), 1.0f);
+            jn_pad_render(&e->pad, &pp, e->b_l + pos, e->b_r + pos, n);
+        } else
+            jn_pad_render(&e->pad, &e->pad_p, e->b_l + pos, e->b_r + pos, n);
+    }
     for (i = 0; i < n; i++) e->b_duck[pos + i] = jf_duck_tick(&e->duck);
     /* the gates count down in the segment */
     if (e->bass_gate_left != 0xFFFFFFFFu) {
@@ -754,6 +926,17 @@ static void render_block(ab_engine_t *e, uint32_t n)
     uint32_t t0, pos = 0, i;
     float trim, send_amt;
     while (jo_cmdq_pop(&e->cmd, &c)) do_cmd(e, &c);
+    e->perf = e->perf_user ? e->perf_user : e->perf_echo; /* (0.6) GESTURE ECHO plays an FX when you hold none */
+    if (e->perf_user != e->g_last_user) {
+        if (e->gesture && e->clock.running && e->g_nrec < AB_NGEST) {
+            ab_gest_t *g = &e->g_rec[e->g_nrec++];
+            g->at = (uint16_t)(e->clock.abs_step % (16u * (e->phrase ? e->phrase : 4u)));
+            g->end = 0;
+            g->type = 0;
+            g->val = e->perf_user;
+        }
+        e->g_last_user = e->perf_user;
+    }
     if (e->perf != e->perf_was) { /* (0.5) a performance FX begins or ends */
         if (e->perf_was == AB_FX_TAPE) { e->bass.target = e->tape_bass, e->sub.target = e->tape_sub; e->tape_gain = 1.0f; }
         e->perf_n = 0;
@@ -882,6 +1065,7 @@ void ab_load_line(ab_engine_t *e, int l)
         if (LINE_FL[k][i] == 'A') st->flags |= JS_ACCENT, st->vel = 124;
     }
     e->pat[e->cur_pat].t[AB_T_BASS] = t;
+    ab_auto_levels(e, AB_T_BASS);
 }
 
 void ab_load_rhythm(ab_engine_t *e, int track, int r)
@@ -914,6 +1098,7 @@ void ab_load_rhythm(ab_engine_t *e, int track, int r)
             }
     }
     e->pat[e->cur_pat].t[track] = t;
+    ab_auto_levels(e, track);
 }
 #undef R
 
@@ -955,6 +1140,7 @@ int ab_record(ab_engine_t *e, int track, int note, float vel)
     idx = (e->seq.pos[track] + len - 1u) % len; /* the step nearest now (the sequencer looks half a step ahead) */
     st = &t->s[idx];
     st->flags = (uint8_t)((st->flags | JS_ON) & ~JS_SLIDE);
+    if (e->decay_on) st->flags = (uint8_t)((st->flags | JS_DECAY) & ~JS_BURN); /* (0.6) TAPE DECAY */
     st->vel = (uint8_t)jo_clampi((int)(vel * 127.0f + 0.5f), 1, 127);
     if (track == AB_T_BASS) st->data = (uint8_t)jo_clampi(note - e->root + 64, 40, 100);
     else { /* the nearest scale degree two octaves over the root */
@@ -966,4 +1152,63 @@ int ab_record(ab_engine_t *e, int track, int note, float vel)
         st->data = (uint8_t)bestd;
     }
     return (int)idx;
+}
+
+/* ------------------------------------------------------------- 0.6 tools --- */
+void ab_energy_set(ab_engine_t *e, float v)
+{
+    uint8_t b;
+    e->en.knob = jo_clampf(v, 0.0f, 1.0f);
+    if (!e->en.recording && !e->en.playing) e->en.value = e->en.knob;
+    b = (uint8_t)(e->en.knob * 127.0f + 0.5f);
+    if (b != e->en_sent && e->midi_out) { e->midi_out(jl_cc(&e->link, JL_CC_ENERGY, b)); e->en_sent = b; }
+}
+
+void ab_energy_curve(ab_engine_t *e, int mode)
+{
+    if (mode == AB_CURVE_REC) e->en_armed = 1, e->en.playing = 0;
+    else if (mode == AB_CURVE_PLAY) e->en_armed = 0, e->en.recording = 0, e->en.playing = e->en.beats != 0;
+    else e->en_armed = 0, e->en.recording = 0, e->en.playing = 0, e->en.value = e->en.knob;
+}
+int ab_energy_curve_mode(const ab_engine_t *e)
+{
+    return e->en_armed || e->en.recording ? AB_CURVE_REC : e->en.playing ? AB_CURVE_PLAY : AB_CURVE_OFF;
+}
+
+void ab_auto_levels(ab_engine_t *e, int track)
+{
+    js_track_t *t = &e->pat[e->cur_pat].t[(uint32_t)track % AB_NTRACKS];
+    uint32_t i, len = t->len ? t->len : 16u;
+    for (i = 0; i < len; i++) {
+        js_step_t *st = &t->s[i];
+        uint32_t p = i & 15u;
+        if (!(st->flags & JS_ON)) { st->lvl = 0; continue; }
+        if (p == 0u || p == 8u || ((st->flags & JS_ACCENT) && (p & 3u) == 0u)) st->lvl = 1;
+        else if (st->ratch || (p & 1u)) st->lvl = 4;
+        else if (st->vel < 70u) st->lvl = 3;
+        else st->lvl = 2;
+    }
+}
+
+void ab_set_answer(ab_engine_t *e, int on)
+{
+    e->duet_answer = (uint8_t)(on != 0);
+    e->cap_n = 0;
+    e->ans_valid = 0;
+}
+
+void ab_gesture_knob(ab_engine_t *e, int k, float v)
+{
+    cmd(e, C_GEST, (uint8_t)(k & 3), (uint8_t)(jo_clampf(v, 0.0f, 1.0f) * 255.0f + 0.5f), 0, 0.0f);
+}
+
+int ab_decay_tick(ab_engine_t *e)
+{
+    uint32_t bar, t;
+    if (!e->decay_on || !e->clock.running) return 0;
+    bar = e->clock.abs_step >> 4;
+    if (bar == e->decay_bar) return 0;
+    e->decay_bar = bar;
+    for (t = 0; t < AB_NTRACKS; t++) js_decay_pass(&e->pat[e->cur_pat].t[t], (uint8_t)(8.0f + e->decay_amt * 72.0f));
+    return 1;
 }

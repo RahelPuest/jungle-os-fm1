@@ -367,8 +367,244 @@ TEST(test_ab_library)
     CHECK(ev_n[AB_T_BASS] > 0);
 }
 
+/* ------------------------------------------------------------------ 0.6 --- */
+/* to the start of 16th abs (before its half, so a note played now lands on it) */
+static void go_to(uint32_t abs)
+{
+    uint32_t g = 0;
+    while (!(L.clock.abs_step == abs && L.clock.phase < 0x50000000u) && g++ < 2000000u) ab_render(&L, llr, 128, 0.9f);
+}
+static uint32_t sent[8], nsent;
+static void capture_out(uint32_t pkt) { if (nsent < 8u) sent[nsent] = pkt; nsent++; }
+static void hello(void) { ab_link_packet(&L, jl_cc(&L.link, JL_CC_HELLO, JL_VERSION), 0); }
+/* to 16th abs with the link heard every beat */
+static void go_link(uint32_t abs)
+{
+    uint32_t a = L.clock.abs_step + 1u;
+    for (; js_before(a, abs); a += 4u) { go_to(a); hello(); }
+    go_to(abs);
+    hello();
+}
+
+TEST(test_ab_energy)
+{
+    const js_track_t *t;
+    uint32_t s, n0 = 0, n2 = 0;
+    start();
+    t = &L.pat[0].t[AB_T_BASS];
+    /* the default line's levels: the downbeat and the bar's middle 1, offbeat 16ths 4, the rest 2 */
+    CHECK(t->s[0].lvl == 1 && t->s[8].lvl == 1 && t->s[3].lvl == 4 && t->s[11].lvl == 4 && t->s[6].lvl == 2);
+    /* low ENERGY: only level 1 plays */
+    ab_energy_set(&L, 0.1f);
+    go(bar_secs() * 2.0f);
+    for (s = 0; s < 16u; s++) n0 += ev_on[1][s];
+    CHECKF(n0 == 2 && ev_on[1][0] && ev_on[1][8], "low energy played %u steps", n0);
+    ab_energy_set(&L, 1.0f);
+    go(bar_secs() * 1.0f);
+    for (s = 0; s < 16u; s++) n2 += ev_on[2][s];
+    CHECKF(n2 == 7, "full energy played %u steps", n2);
+    /* the knob goes over the link once per change; a received ENERGY is followed and not sent back */
+    L.midi_out = capture_out;
+    nsent = 0;
+    ab_energy_set(&L, 0.5f);
+    ab_energy_set(&L, 0.5f);
+    CHECK(nsent == 1 && sent[0] == jl_cc(&L.link, JL_CC_ENERGY, 64));
+    ab_link_packet(&L, jl_cc(&L.link, JL_CC_ENERGY, 20), 0);
+    CHECKF(fabsf(L.en.knob - 20.0f / 127.0f) < 0.001f && nsent == 1, "followed %f, sent %u", (double)L.en.knob, nsent);
+    go(bar_secs() * 0.25f);
+    CHECK(fabsf(L.en.value - 20.0f / 127.0f) < 0.001f && L.seq.energy == 1);
+    L.midi_out = 0;
+    /* the sound: less ENERGY, less BITE in the patch (full: as before) */
+    {
+        float drive_low, drive_full;
+        ab_energy_set(&L, 0.0f); go(0.02f); drive_low = L.patch.p[JN_P_DRIVE];
+        ab_energy_set(&L, 1.0f); go(0.02f); drive_full = L.patch.p[JN_P_DRIVE];
+        CHECKF(drive_low < drive_full, "drive %f at no energy, %f at full", (double)drive_low, (double)drive_full);
+    }
+    /* AUTO LEVELS on an edited track */
+    L.pat[0].t[AB_T_STAB].s[5].flags = JS_ON, L.pat[0].t[AB_T_STAB].s[5].vel = 40;
+    ab_auto_levels(&L, AB_T_STAB);
+    CHECK(L.pat[0].t[AB_T_STAB].s[5].lvl == 4);
+    L.pat[0].t[AB_T_STAB].s[2].flags = JS_ON, L.pat[0].t[AB_T_STAB].s[2].vel = 40;
+    ab_auto_levels(&L, AB_T_STAB);
+    CHECK(L.pat[0].t[AB_T_STAB].s[2].lvl == 3);
+}
+
+TEST(test_ab_energy_curve)
+{
+    start();
+    ab_energy_curve(&L, AB_CURVE_REC);
+    CHECK(ab_energy_curve_mode(&L) == AB_CURVE_REC);
+    ab_energy_set(&L, 0.1f);
+    go_to(32);                     /* two bars low, two bars high: one phrase recorded */
+    ab_energy_set(&L, 0.9f);
+    go_to(66);
+    CHECK(ab_energy_curve_mode(&L) == AB_CURVE_PLAY && L.en.beats == 16);
+    ab_energy_set(&L, 0.5f);       /* the knob moves; the curve plays */
+    go_to(72);
+    CHECKF(fabsf(L.en.value - 0.1f) < 0.01f, "the curve's first half plays %f", (double)L.en.value);
+    go_to(64 + 40);
+    CHECKF(fabsf(L.en.value - 0.9f) < 0.01f, "the curve's second half plays %f", (double)L.en.value);
+    ab_energy_curve(&L, AB_CURVE_OFF);
+    CHECK(fabsf(L.en.value - 0.5f) < 0.001f);
+}
+
+/* ANSWER ME: three notes in bar 1, the answer in bar 2 */
+static void play_bar1(void)
+{
+    static const uint8_t AT[3] = {0, 4, 9}, NOTE[3] = {38, 41, 45};
+    uint32_t i;
+    for (i = 0; i < 3u; i++) {
+        go_to(16u + AT[i]);
+        ab_cmd_note(&L, AB_PART_BASS, NOTE[i], 0.8f, 1);
+        go(0.01f);
+        ab_cmd_note(&L, AB_PART_BASS, NOTE[i], 0.0f, 0);
+    }
+}
+TEST(test_ab_answer_me)
+{
+    static const uint8_t AT[3] = {0, 4, 9}, D[3] = {64, 67, 71};
+    uint32_t x, s, ok;
+    for (x = 0; x < AB_NANS; x++) {
+        uint8_t want[16];
+        uint32_t k = 0;
+        start();
+        ab_set_answer(&L, 1);
+        L.duet_xform = (uint8_t)x;
+        memset(want, 0, sizeof want);
+        for (s = 0; s < 3u; s++) {
+            uint32_t to = AT[s];
+            int d = D[s];
+            if (x == AB_ANS_INVERT) d = 64 + jh_snap(L.root, L.scale, L.root - (d - 64)) - L.root;
+            if (x == AB_ANS_RETRO) to = 15u - to;
+            if (x == AB_ANS_DISPLACE) to = (to + 2u) & 15u;
+            if (x == AB_ANS_OCT_DOWN) d -= 12;
+            if (x == AB_ANS_SPARSE && (k++ & 1u)) continue;
+            want[to] = (uint8_t)d;
+        }
+        play_bar1();
+        go_to(32u + 8u);
+        CHECKF(L.cr_play == 2 && L.fv.near == (uint8_t)L.cr[1].node, "the answer in C's sound (%s)", ab_answer_name[x]);
+        go_to(48u + 2u);
+        ok = 1;
+        for (s = 0; s < 16u; s++) {
+            if (ev_on[0][s] || ev_on[1][s]) ok = 0;                      /* your bars: the steps are silent */
+            if (ev_on[2][s] != (want[s] != 0) || (want[s] && ev_data[2][s] != want[s])) ok = 0;
+        }
+        CHECKF(ok, "the answer %s", ab_answer_name[x]);
+    }
+    /* a silent bar gets no answer */
+    go_to(64u + 14u);
+    for (s = 0, ok = 1; s < 16u; s++) if (ev_on[3][s] || ev_on[4][s]) ok = 0;
+    CHECK(ok && !L.ans_valid);
+}
+
+TEST(test_ab_pocket)
+{
+    const js_track_t *t;
+    uint32_t s, ok = 1, n;
+    start();
+    hello();
+    ab_link_packet(&L, jl_cc(&L.link, JL_CC_DENSITY, 100), 0);
+    CHECKF(fabsf(L.drum_density - 100.0f / 127.0f) < 0.001f, "density %f", (double)L.drum_density);
+    L.drum_density = 0.5f; /* neither thinner nor fuller */
+    L.pocket_amt = 1.0f;
+    t = &L.pat[0].t[AB_T_BASS];
+    go(0.005f); /* the transport started */
+    go_link(0); ab_link_kick(&L, 120);
+    go_link(3); ab_link_kick(&L, 120);
+    go_link(16u + 1u);
+    CHECKF(ab_pocket_mask(&L, 1) == 0x9u, "the kicks learned %x", ab_pocket_mask(&L, 1));
+    go_link(32u + 1u);
+    /* bar 1: the bass's notes on 1 and 4 moved to the next gaps (2 and 5), the rest as the line */
+    for (s = 0; s < 16u; s++) {
+        int line = (t->s[s].flags & JS_ON) != 0, want = line && s != 0u && s != 3u;
+        if (s == 1u || s == 4u) want = 1;
+        if (ev_on[1][s] != want) ok = 0;
+    }
+    CHECKF(ok && ev_data[1][1] == t->s[0].data && ev_data[1][4] == t->s[3].data, "the bass around the kicks");
+    /* bar 2 (no kicks in bar 1): the line */
+    go_link(48u + 1u);
+    CHECK(bar_is_line(2, t));
+    /* busy drums: the bass thins to its downbeat; sparse drums: it fills in */
+    L.drum_density = 1.0f;
+    go_link(64u + 1u);
+    for (s = 0, n = 0; s < 16u; s++) n += ev_on[3][s];
+    CHECKF(n == 1 && ev_on[3][0], "busy drums: %u bass notes", n);
+    L.drum_density = 0.0f;
+    go_link(80u + 1u);
+    for (s = 0, n = 0; s < 16u; s++) n += ev_on[4][s];
+    CHECKF(n > 7u, "sparse drums: %u bass notes (the line has 7)", n);
+    /* NO LINK: POCKET does nothing (kicks by hand, no link heard) */
+    start();
+    L.pocket_amt = 1.0f;
+    L.drum_density = 0.5f;
+    go(0.005f);
+    go_to(0); ab_link_kick(&L, 120);
+    go_to(3); ab_link_kick(&L, 120);
+    go_to(32u + 1u);
+    CHECK(!jl_alive(&L.link, L.ms) && bar_is_line(1, &L.pat[0].t[AB_T_BASS]));
+}
+
+TEST(test_ab_gesture_echo)
+{
+    start();
+    L.gesture = 1;
+    go_to(8);
+    ab_set_perf(&L, AB_FX_OCT_UP);   /* held from 8 to 24 */
+    go_to(24);
+    ab_set_perf(&L, AB_FX_NONE);
+    go_to(40);
+    ab_gesture_knob(&L, 0, 1.0f);    /* CHAR to the top (MORPH stays 0.4) */
+    go_to(64u + 12u);
+    CHECKF(L.perf == AB_FX_OCT_UP, "the FX came back (%d)", L.perf);
+    go_to(64u + 20u);
+    CHECKF(L.perf == AB_FX_NONE, "for half as long (%d)", L.perf);
+    go_to(64u + 44u);
+    CHECKF(fabsf(L.echo_off[0] - 0.5f * (1.0f - 0.4f)) < 0.01f, "the knob at half depth %f", (double)L.echo_off[0]);
+    go_to(128u + 44u);
+    CHECK(L.echo_off[0] == 0.0f && L.perf == AB_FX_NONE); /* nothing played in that phrase: nothing comes back */
+    /* off: no echo */
+    L.gesture = 0;
+    go_to(192u + 1u);
+    CHECK(L.g_nplay == 0);
+}
+
+TEST(test_ab_tape_decay)
+{
+    js_step_t *a, *b;
+    uint32_t bar, ticks = 0, fall = 1;
+    uint8_t last;
+    start();
+    CHECK(ab_decay_tick(&L) == 0); /* off */
+    L.decay_on = 1;
+    L.decay_amt = 0.3f;
+    go_to(5);
+    CHECK(ab_record(&L, AB_T_BASS, 40, 1.0f) >= 0);
+    a = &L.pat[0].t[AB_T_BASS].s[(L.seq.pos[AB_T_BASS] + 15u) % 16u];
+    b = &L.pat[0].t[AB_T_BASS].s[8];
+    b->flags = (uint8_t)(b->flags | JS_DECAY | JS_BURN);
+    CHECK((a->flags & JS_DECAY) && (a->flags & JS_ON));
+    last = a->vel;
+    for (bar = 1; bar < 40u && (a->flags & JS_ON); bar++) {
+        go_to(bar * 16u + 1u);
+        ticks += (uint32_t)ab_decay_tick(&L);
+        CHECK(ab_decay_tick(&L) == 0); /* once a bar */
+        if ((a->flags & JS_ON) && a->vel >= last) fall = 0;
+        last = a->vel;
+    }
+    CHECKF(fall && !(a->flags & JS_ON) && ticks > 5u && ticks < 30u, "faded out after %u bars", ticks);
+    CHECK((b->flags & JS_ON) && b->vel == 124);       /* burned in: it stays */
+}
+
 void run_ab_live(void)
 {
+    RUN(test_ab_energy);
+    RUN(test_ab_energy_curve);
+    RUN(test_ab_answer_me);
+    RUN(test_ab_pocket);
+    RUN(test_ab_gesture_echo);
+    RUN(test_ab_tape_decay);
     RUN(test_ab_form_variations);
     RUN(test_ab_perf_fx);
     RUN(test_ab_fills);

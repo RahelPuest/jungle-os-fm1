@@ -12,7 +12,7 @@ static ab_engine_t eng PLAT_POOL;
 static int16_t fx_pool[AB_POOL_SAMPLES] PLAT_POOL; /* the delay's lines and the reverb: 96 KiB */
 static ju_stack_t undo PLAT_POOL;                 /* UNDO / REDO: 8 patterns and their sound states, 23 KiB */
 
-#define SET_MAGIC 0x33534241u /* "ABS3" (0.5: the variations, the phrase, the link helpers) */
+#define SET_MAGIC 0x34534241u /* "ABS4" (0.6: ENERGY, DUET, TAPE DECAY) */
 typedef struct {
     float bpm, morph, motion, bite, space, duck_depth;
     jf_neuro_macros_t fx;
@@ -24,9 +24,11 @@ typedef struct {
     uint8_t duck_internal, scene_quant, sub_octave, link_usb_host;
     uint8_t form, phrase, lock_kick, fill_answers, fill_bars, fill_type;
     int8_t var_line[AB_NVAR - 1], var_node[AB_NVAR - 1]; /* B, C, D */
+    float energy, pocket_amt, decay_amt;                  /* (0.6) */
+    uint8_t duet_xform, gesture, decay_on;
 } settings_t;
 static settings_t set;
-#define PAT_MAGIC 0x32544150u /* (0.5: the steps' trig conditions) */
+#define PAT_MAGIC 0x33544150u /* (0.6: the steps' ENERGY levels, the tracks' routes) */
 #define SCN_MAGIC 0x314E4353u
 static struct { jo_rec_hdr_t h; uint8_t p[sizeof(js_pattern_t) > sizeof(ab_scene_t) * AB_NSCENES ? sizeof(js_pattern_t)
                                                                                     : sizeof(ab_scene_t) * AB_NSCENES]; } io;
@@ -37,8 +39,8 @@ static uint8_t dirty, load_report;
 enum { PG_MAIN, PG_SEQ, PG_SOUND, PG_FX, PG_SONG, PG_SYSTEM, NPAGES };
 static const char *const PAGE_NAME[NPAGES] = {"HOME", "SEQUENCE", "SOUND", "FX", "SONG", "SYSTEM"};
 /* the held layers, in priority (the first held one is the layer) */
-enum { L_NONE, L_SEL, L_STORE, L_FX, L_SONG, L_FILL, L_VARY, L_ERASE };
-static const char *const LAYER_NAME[8] = {"", "SEL", "STORE", "FX", "SONG", "FILL", "VARY", "ERASE"};
+enum { L_NONE, L_SEL, L_STORE, L_FX, L_SONG, L_FILL, L_VARY, L_ERASE, L_ENERGY, L_DUET, NLAYERS };
+static const char *const LAYER_NAME[NLAYERS] = {"", "SEL", "STORE", "FX", "SONG", "FILL", "VARY", "ERASE", "ENERGY", "DUET"};
 static const char *const SCENE_NAME[AB_NSCENES] = {"INTRO", "BUILD", "DROP", "MUTATION", "VOID", "IMPACT", "SCENE 7", "SCENE 8"};
 static const char *const QUANT_NAME[6] = {"NOW", "BEAT", "BAR", "2 BAR", "4 BAR", "PHRASE"};
 static const char *const NOTE_NAME[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
@@ -64,6 +66,8 @@ static struct {
     uint8_t vary;                      /* VARY: the variation picked last (its LINE / SOUND on ALGO / K4) */
     uint8_t lib_line, lib_stab, lib_pad;
     uint32_t stop_ms;                  /* when the transport stopped (autosave 3 s later) */
+    uint8_t song_page;                 /* (0.6) SONG's knobs: 0 the form and the link, 1 DECAY, POCKET, ECHO */
+    uint8_t burned;                    /* (0.6) the held step was burned in (TAPE DECAY) */
     uint8_t was_running;
     ui_in_t in;
     uint32_t splash_until;
@@ -131,6 +135,12 @@ static void settings_defaults(void)
     set.fill_bars = 1;
     set.fill_type = AB_FILL_ROLLS;
     for (i = 0; i < AB_NVAR - 1u; i++) set.var_line[i] = eng.cr[i].line, set.var_node[i] = eng.cr[i].node;
+    set.energy = 1.0f;
+    set.pocket_amt = 0.0f;
+    set.decay_amt = 0.3f;
+    set.duet_xform = AB_ANS_ECHO;
+    set.gesture = 0;
+    set.decay_on = 0;
 }
 
 static int load_rec(uint32_t obj, uint32_t magic, void *dst, uint32_t len)
@@ -177,6 +187,13 @@ static void apply_settings(void)
     eng.quant = set.scene_quant == 5;
     eng.lock_kick = set.lock_kick;
     eng.fill_answers = set.fill_answers;
+    eng.en.knob = eng.en.value = set.energy;
+    eng.seq.energy = je_level(set.energy);
+    eng.pocket_amt = set.pocket_amt;
+    eng.decay_amt = set.decay_amt;
+    eng.duet_xform = set.duet_xform;
+    eng.gesture = set.gesture;
+    eng.decay_on = set.decay_on;
 }
 
 static void engine_to_settings(void)
@@ -195,6 +212,8 @@ static void engine_to_settings(void)
     set.follow_link = eng.follow_link, set.voice_mode = eng.voice_mode, set.duck_internal = eng.duck_internal;
     set.form = eng.form, set.phrase = eng.phrase, set.lock_kick = eng.lock_kick, set.fill_answers = eng.fill_answers;
     for (i = 0; i < AB_NVAR - 1u; i++) set.var_line[i] = eng.cr[i].line, set.var_node[i] = eng.cr[i].node;
+    set.energy = eng.en.knob, set.pocket_amt = eng.pocket_amt, set.decay_amt = eng.decay_amt;
+    set.duet_xform = eng.duet_xform, set.gesture = eng.gesture, set.decay_on = eng.decay_on;
 }
 
 static int settings_ok(void)
@@ -202,7 +221,9 @@ static int settings_ok(void)
     uint32_t i;
     if (!(set.bpm >= 40.0f && set.bpm <= 300.0f) || set.scale >= JH_NSCALES || set.chord >= JH_NCHORDS ||
         set.stab.model >= JN_STAB_NMODELS || set.voice_mode > 2u || set.root < 24 || set.root > 60 ||
-        set.form >= AB_NFORMS || set.scene_quant > 5u || set.fill_type >= AB_NFILLS)
+        set.form >= AB_NFORMS || set.scene_quant > 5u || set.fill_type >= AB_NFILLS || set.duet_xform >= AB_NANS ||
+        !(set.energy >= 0.0f && set.energy <= 1.0f) || !(set.pocket_amt >= 0.0f && set.pocket_amt <= 1.0f) ||
+        !(set.decay_amt >= 0.0f && set.decay_amt <= 1.0f))
         return 0;
     for (i = 0; i < AB_NVAR - 1u; i++)
         if (set.var_line[i] < -1 || set.var_line[i] >= AB_NPATTERNS || set.var_node[i] < -1 || set.var_node[i] >= (int)eng.fm.nnodes)
@@ -245,10 +266,13 @@ static void save_all(int quiet)
     else { dirty = 0; app_say(quiet ? "AUTOSAVED" : "SAVED", "PATTERNS + SCENES"); }
 }
 
+static void link_out(uint32_t pkt) { plat_midi_send(pkt, TO_USB); } /* (0.6) ENERGY goes to Break Surgeon */
+
 void app_init(void)
 {
     uint32_t i;
     ab_init(&eng, fx_pool);
+    eng.midi_out = link_out;
     ju_init(&undo);
     load_all();
     ui.held_step = -1;
@@ -329,19 +353,20 @@ static const char *lib_name(void)
     return ab_pad_rhythm_name[ui.lib_pad % AB_NRHYTHMS];
 }
 
-/* the layer held now (the first of SEL, SAVE, FX, ARP, ENV, LFO, REC held) */
+/* the layer held now (the first of SEL, SAVE, FX, ARP, ENV, LFO, REC, HOME, SEQ held). (0.6) HOME and SEQ count
+ * as layers once held past a tap (a tap still opens their page) */
 static int layer(void)
 {
-    static const uint8_t B[7] = {B_SEL, B_SAVE, B_FX, B_ARP, B_ENV, B_LFO, B_REC};
+    static const uint8_t B[9] = {B_SEL, B_SAVE, B_FX, B_ARP, B_ENV, B_LFO, B_REC, B_HOME, B_SEQ};
     uint32_t i;
-    for (i = 0; i < 7u; i++)
+    for (i = 0; i < 9u; i++)
         if (ui_held(&ui.in, B[i])) return (int)i + 1;
     return L_NONE;
 }
 static void use_layer(int l)
 {
-    static const uint8_t B[8] = {0, B_SEL, B_SAVE, B_FX, B_ARP, B_ENV, B_LFO, B_REC};
-    if (l > 0 && l < 8) ui_use(&ui.in, B[l]);
+    static const uint8_t B[NLAYERS] = {0, B_SEL, B_SAVE, B_FX, B_ARP, B_ENV, B_LFO, B_REC, B_HOME, B_SEQ};
+    if (l > 0 && l < NLAYERS) ui_use(&ui.in, B[l]);
 }
 
 /* ---------------------------------------------------------------- knobs --- */
@@ -392,6 +417,26 @@ static void turn_k(int k, int32_t d)
         return;
     }
     switch (l) {
+    case L_ENERGY: /* (0.6) K1 ENERGY, K2 the curve, K3 AUTO LEVELS */
+        ui_use(&ui.in, B_HOME);
+        if (k == 0) ab_energy_set(&eng, eng.en.knob + step * 2.0f * (float)d);
+        else if (k == 1) {
+            int m = jo_clampi(ab_energy_curve_mode(&eng) + (d > 0 ? 1 : -1), 0, AB_NCURVES - 1);
+            ab_energy_curve(&eng, m);
+            app_say("ENERGY CURVE", m == AB_CURVE_REC ? "FROM THE PHRASE START" : ab_curve_name[m]);
+        } else if (k == 2) {
+            undo_push();
+            ab_auto_levels(&eng, ui.track);
+            app_say("AUTO LEVELS", ab_track_name[ui.track]);
+        }
+        return;
+    case L_DUET: /* (0.6) K1 ANSWER ME, K2 its transform, K3 POCKET, K4 GESTURE ECHO */
+        ui_use(&ui.in, B_SEQ);
+        if (k == 0) { ab_set_answer(&eng, d > 0); app_say("ANSWER ME", eng.duet_answer ? "PLAY A BAR" : "OFF"); }
+        else if (k == 1) eng.duet_xform = (uint8_t)jo_clampi(eng.duet_xform + (d > 0 ? 1 : -1), 0, AB_NANS - 1);
+        else if (k == 2) nudge(&eng.pocket_amt, d, 0.02f);
+        else eng.gesture = d > 0;
+        return;
     case L_FX: ui_use(&ui.in, B_FX); nudge(bus_knob(k), d, step); jf_neuro_update(&eng.master); return;
     case L_FILL:
         ui_use(&ui.in, B_ENV);
@@ -435,6 +480,13 @@ static void turn_k(int k, int32_t d)
         return;
     case PG_FX: nudge(bus_knob(k), d, step); jf_neuro_update(&eng.master); return;
     case PG_SONG:
+        if (ui.song_page) { /* (0.6) TAPE DECAY, its amount, POCKET, GESTURE ECHO */
+            if (k == 0) eng.decay_on = d > 0;
+            else if (k == 1) nudge(&eng.decay_amt, d, 0.02f);
+            else if (k == 2) nudge(&eng.pocket_amt, d, 0.02f);
+            else eng.gesture = d > 0;
+            return;
+        }
         if (k == 0) ab_set_phrase(&eng, d > 0 ? (eng.phrase == 4 ? 8 : 16) : (eng.phrase == 16 ? 8 : 4));
         else if (k == 1) { set.scene_quant = (uint8_t)jo_clampi(set.scene_quant + (d > 0 ? 1 : -1), 0, 5); eng.quant = set.scene_quant == 5; }
         else if (k == 2) eng.lock_kick = d > 0;
@@ -449,14 +501,17 @@ static void turn_k(int k, int32_t d)
     default: /* HOME: the track's sound */
         nudge(track_knob(k), d, step);
         if (ui.track == AB_T_BASS && k == 0) eng.explore_node = -1, eng.mutated = 0;
+        if (ui.track == AB_T_BASS && eng.gesture) ab_gesture_knob(&eng, k, *track_knob(k)); /* (0.6) GESTURE ECHO */
         return;
     }
 }
 
 /* --------------------------------------------------------------- input --- */
+/* the part the keys play: the track, or (0.6) the bass while ANSWER ME listens */
+static int key_part(void) { return eng.duet_answer && !ui.rec && ui.page != PG_SOUND ? AB_T_BASS : ui.track; }
 static int key_note(uint32_t k)
 {
-    int base = ui.track == AB_T_BASS ? 29 : ui.track == AB_T_STAB ? 53 : 41; /* F1, F3, F2 at the lowest key */
+    int part = key_part(), base = part == AB_T_BASS ? 29 : part == AB_T_STAB ? 53 : 41; /* F1, F3, F2 at the lowest key */
     return base + (int)k + 12 * set.octave;
 }
 
@@ -467,13 +522,13 @@ static void play_key(uint32_t k, int down)
         int note = key_note(k);
         float vel = (float)(v ? v : 100u) * (1.0f / 127.0f);
         ui.key_note[k] = (int8_t)note;
-        ab_cmd_note(&eng, ui.track, note, vel, 1);
+        ab_cmd_note(&eng, key_part(), note, vel, 1);
         if (ui.rec && ui.page != PG_SOUND) {
             int s = ab_record(&eng, ui.track, note, vel);
             if (s >= 0) dirty = 1;
         }
     } else if (ui.key_note[k] >= 0) {
-        ab_cmd_note(&eng, ui.track, ui.key_note[k], 0.0f, 0);
+        ab_cmd_note(&eng, key_part(), ui.key_note[k], 0.0f, 0);
         ui.key_note[k] = -1;
     }
 }
@@ -488,8 +543,20 @@ static void pattern_queue(int p)
 static int layer_key(int l, int w, int b, int down, int up)
 {
     if (l == L_NONE || l == L_SEL) return 0;
+    if (l == L_DUET) { use_layer(l); return 0; } /* (0.6) DUET: the keys as outside it (they play the bass with ANSWER ME) */
     use_layer(l);
     switch (l) {
+    case L_ENERGY: /* (0.6) a white key: its step's level 1 > 2 > 3 > 4 > 1 */
+        if (down && w >= 0) {
+            js_step_t *st = &cur_track()->s[(ui.step_page * 16u + (uint32_t)w) % JS_MAXSTEPS];
+            char t[16] = "STEP ", v[8];
+            undo_push();
+            st->lvl = (uint8_t)((st->lvl ? st->lvl : 1u) % 4u + 1u);
+            ui_int(v, w + 1); ui_cat(t, v);
+            ui_cat(t, " LEVEL "); ui_int(v, st->lvl); ui_cat(t, v);
+            app_say("ENERGY", t);
+        }
+        return 1;
     case L_FX: /* the performance FX, while the key is held */
         if (down && w >= 0 && w < AB_NFX - 1) { ab_set_perf(&eng, w + 1); ui.fx_key = (int8_t)w; }
         if (up && w >= 0 && w == ui.fx_key) { ab_set_perf(&eng, AB_FX_NONE); ui.fx_key = -1; }
@@ -602,7 +669,8 @@ static void input(void)
     /* OCT- / OCT+: the step page, or the keyboard's octave while it plays (REC, SOUND) */
     if (ui_pressed(in, B_OCTDN) || ui_pressed(in, B_OCTUP)) {
         int up = ui_pressed(in, B_OCTUP);
-        if (ui.rec || ui.page == PG_SOUND) set.octave = (int8_t)jo_clampi(set.octave + (up ? 1 : -1), -2, 2);
+        if (ui.rec || ui.page == PG_SOUND || eng.duet_answer) set.octave = (int8_t)jo_clampi(set.octave + (up ? 1 : -1), -2, 2);
+        else if (ui.page == PG_SONG && l == L_NONE) ui.song_page = (uint8_t)up; /* (0.6) SONG's two knob pages */
         else ui.step_page = (uint8_t)(up && cur_track()->len > 16u);
         ui.redraw = 1;
     }
@@ -615,9 +683,9 @@ static void input(void)
         if (up && ui.key_note[k] >= 0) { play_key(k, 0); ui.key_used &= ~bit; continue; } /* a note started: it ends */
         if (layer_key(l, w, b, down, up)) { if (down) ui.key_used |= bit; else ui.key_used &= ~bit; continue; }
         if (up && (ui.key_used & bit) && !(w >= 0 && w == ui.held_step)) { ui.key_used &= ~bit; continue; }
-        if (ui.rec || ui.page == PG_SOUND) { if (down) play_key(k, 1); continue; } /* the keys play (and REC records) */
+        if (ui.rec || ui.page == PG_SOUND || eng.duet_answer) { if (down) play_key(k, 1); continue; } /* the keys play (and REC records) */
         if (w >= 0) { /* a step: tap toggles, hold edits */
-            if (down) { ui.held_step = (int8_t)w; ui.step_pushed = 0; ui.key_used &= ~bit; }
+            if (down) { ui.held_step = (int8_t)w; ui.step_pushed = 0; ui.burned = 0; ui.key_used &= ~bit; }
             else {
                 if (!(ui.key_used & bit)) {
                     undo_push();
@@ -638,7 +706,30 @@ static void input(void)
             ui.key_used |= ui_white_bit(ui.held_step);
         }
     }
-    if ((d = plat_enc(EN_SELECT)) != 0) {
+    /* (0.6) TAPE DECAY: a step held half a second without a knob turned is burned in */
+    if (ui.held_step >= 0 && !ui.burned && !(ui.key_used & ui_white_bit(ui.held_step)) && eng.decay_on) {
+        uint32_t kk;
+        for (kk = 0; kk < NKEYS; kk++)
+            if (ui_white(kk) == ui.held_step && (in->keys >> kk & 1u) && plat_ms() - in->key_t[kk] >= 500u) {
+                js_step_t *st = held_step();
+                if (st->flags & JS_ON) {
+                    undo_push();
+                    st->flags = (uint8_t)((st->flags | JS_BURN) & ~JS_DECAY);
+                    ui.key_used |= ui_white_bit(ui.held_step);
+                    ui.burned = 1;
+                    app_say("BURNED IN", "IT NO LONGER FADES");
+                }
+                break;
+            }
+    }
+    if ((d = plat_enc(EN_SELECT)) != 0 && l == L_ENERGY) { /* (0.6) ENERGY on SELECT too */
+        ui_use(in, B_HOME);
+        ab_energy_set(&eng, eng.en.knob + 0.02f * (float)d);
+        dirty = 1;
+        ui.redraw = 1;
+        d = 0;
+    }
+    if (d != 0) {
         if (sel) { ui_use(in, B_SEL); ab_cmd_bpm(&eng, jo_clampf(eng.clock.bpm + 0.5f * (float)d, 60.0f, 220.0f)); }
         else if (ui.page == PG_SYSTEM) eng.duck_depth = jo_clampf(eng.duck_depth + 0.02f * (float)d, 0.0f, 1.0f);
         else {
@@ -741,6 +832,9 @@ static void draw_header(void)
     ui_cat(right, t);
     ui_header2(l ? LAYER_NAME[l] : ui.rec ? "REC" : PAGE_NAME[ui.page], mid, right,
                ui.rec || plat_cpu_pct() > 85u || plat_xruns(), pending_frac());
+    /* (0.6) ENERGY: a thin bar under the right text */
+    lcd_fill(176, 19, 60, 2, C_LINE);
+    lcd_fill(176, 19, (int32_t)(60.0f * jo_clampf(eng.en.value, 0.0f, 1.0f) + 0.5f), 2, eng.en.playing ? C_WHITE : C_HI);
 }
 
 /* the step view of track t (16 at the step page): on, velocity, marks */
@@ -791,8 +885,9 @@ static void draw_layer(int l)
 {
     char t[40], v[12];
     uint32_t i;
-    static const char *const HINT[8] = {"", "", "WHITE 1-8: STORE", "HOLD A KEY", "SCENE PATTERN MUTE", "WHITE 1-4: NOW",
-                                        "WHITE 1-4: A-D  9-14: FORM", "CLEAR STEP / TRACK"};
+    static const char *const HINT[NLAYERS] = {"", "", "WHITE 1-8: STORE", "HOLD A KEY", "SCENE PATTERN MUTE", "WHITE 1-4: NOW",
+                                              "WHITE 1-4: A-D  9-14: FORM", "CLEAR STEP / TRACK", "WHITE: STEP LEVEL",
+                                              "YOU AND THE MACHINE"};
     ui_banner(LAYER_NAME[l], HINT[l]);
     switch (l) {
     case L_FX:
@@ -861,6 +956,61 @@ static void draw_layer(int l)
             ui_fit(168, y, 68, &FONT_T, ab_form_name[i], on ? C_BLACK : C_GRAY);
         }
         break;
+    case L_ENERGY: { /* (0.6) the ENERGY, its curve, the selected track's levels */
+        const js_track_t *tr = cur_track();
+        uint32_t lvl = je_level(eng.en.value), beats = eng.en.beats;
+        t[0] = 0; ui_int(v, (int32_t)(eng.en.value * 100.0f + 0.5f)); ui_cat(t, v); ui_cat(t, "%");
+        ui_fit(6, 21, 80, &FONT_M, t, C_HI);
+        t[0] = 0; ui_cat(t, "LEVEL "); ui_int(v, (int32_t)lvl); ui_cat(t, v); ui_cat(t, " OF 4  CURVE ");
+        ui_cat(t, ab_curve_name[ab_energy_curve_mode(&eng)]);
+        ui_fit(88, 24, 234 - 88, &FONT_XS, t, C_WHITE);
+        ui_fit(88, 38, 234 - 88, &FONT_T, eng.en_armed ? "REC STARTS AT THE PHRASE START" : eng.en.recording ? "RECORDING THE KNOB" : "K1 ENERGY K2 CURVE K3 AUTO", C_GRAY);
+        /* the curve, one bar a beat */
+        cv_rect(4, 50, 232, 18, C_LINE);
+        for (i = 0; i < beats && i < JE_BEATS; i++) {
+            int32_t x = 4 + (int32_t)(i * 232u / beats), w = (int32_t)(232u / beats) - 1, h = (int32_t)(eng.en.lane[i] * 16u / 255u);
+            cv_rect(x, 67 - h, w < 1 ? 1 : w, h, C_AMB);
+        }
+        if (eng.clock.running && beats) {
+            uint32_t b = (eng.clock.abs_step >> 2) % beats;
+            cv_rect(4 + (int32_t)(b * 232u / beats), 50, 2, 18, C_WHITE);
+        }
+        if (!beats) ui_fit(10, 54, 220, &FONT_T, "NO CURVE: K2 REC RECORDS ONE PHRASE", C_DIM);
+        /* the steps' levels: the box's height, dim above the ENERGY's level */
+        for (i = 0; i < 16u; i++) {
+            const js_step_t *st = &tr->s[(ui.step_page * 16u + i) % JS_MAXSTEPS];
+            int32_t x = 4 + (int32_t)i * 15, lv = st->lvl ? st->lvl : 1, on = (st->flags & JS_ON) && ui.step_page * 16u + i < tr->len;
+            cv_rect(x, 74, 13, 24, C_LINE);
+            if (on) cv_rect(x + 1, 98 - lv * 6, 11, lv * 6, (uint32_t)lv <= lvl ? C_HI : C_DIM);
+        }
+        t[0] = 0; ui_cat(t, ab_track_name[ui.track]); ui_cat(t, ": TAP A STEP FOR ITS LEVEL 1-4");
+        ui_fit(6, 101, 228, &FONT_T, t, C_GRAY);
+        break;
+    }
+    case L_DUET: { /* (0.6) ANSWER ME, POCKET, GESTURE ECHO */
+        uint16_t km = ab_pocket_mask(&eng, eng.clock.abs_step >> 4);
+        int link = jl_alive(&eng.link, eng.ms);
+        t[0] = 0; ui_cat(t, "ANSWER ME "); ui_cat(t, eng.duet_answer ? "ON  " : "OFF  "); ui_cat(t, ab_answer_name[eng.duet_xform % AB_NANS]);
+        ui_fit(6, 22, 228, &FONT_XS, t, eng.duet_answer ? C_HI : C_GRAY);
+        ui_fit(6, 34, 228, &FONT_T, !eng.duet_answer ? "K1 ON: THE KEYS PLAY, THE MACHINE ANSWERS" :
+                                  eng.ans_valid ? "THE MACHINE ANSWERS (IN C'S SOUND)" : eng.cap_n ? "LISTENING TO YOUR BAR" : "PLAY A BAR", C_WHITE);
+        t[0] = 0; ui_cat(t, "POCKET ");
+        if (eng.pocket_amt <= 0.0f) ui_cat(t, "OFF");
+        else { ui_int(v, (int32_t)(eng.pocket_amt * 100.0f + 0.5f)); ui_cat(t, v); ui_cat(t, "%"); }
+        if (!link) ui_cat(t, "  NO LINK");
+        else { ui_cat(t, "  DRUMS "); ui_int(v, (int32_t)(eng.drum_density * 100.0f + 0.5f)); ui_cat(t, v); ui_cat(t, "%"); }
+        ui_fit(6, 48, 228, &FONT_XS, t, eng.pocket_amt > 0.0f ? (link ? C_HI : UI_RED) : C_GRAY);
+        for (i = 0; i < 16u; i++) { /* the kicks POCKET heard in the last bar */
+            int32_t x = 4 + (int32_t)i * 15;
+            cv_rect(x, 62, 13, 9, (km >> i) & 1u ? C_WHITE : C_LINE);
+        }
+        ui_fit(6, 73, 228, &FONT_T, "LAST BAR'S KICKS: THE BASS GOES AROUND THEM", C_DIM);
+        t[0] = 0; ui_cat(t, "GESTURE ECHO "); ui_cat(t, eng.gesture ? "ON" : "OFF");
+        if (eng.gesture) { ui_cat(t, "  "); ui_int(v, eng.g_nrec); ui_cat(t, v); ui_cat(t, " MOVES"); if (eng.perf_echo) { ui_cat(t, "  "); ui_cat(t, ab_fx_name[eng.perf_echo % AB_NFX]); } }
+        ui_fit(6, 86, 228, &FONT_XS, t, eng.gesture ? C_HI : C_GRAY);
+        ui_fit(6, 100, 228, &FONT_T, "FX AND KNOBS COME BACK NEXT PHRASE, HALF DEEP", C_DIM);
+        break;
+    }
     case L_ERASE:
         ui_fit(6, 30, 228, &FONT_S, "WHITE KEY: CLEAR THAT STEP", C_WHITE);
         ui_fit(6, 50, 228, &FONT_S, "BLACK 1-3: CLEAR BASS STAB PAD", C_WHITE);
@@ -896,6 +1046,13 @@ static void draw_main(void)
     ui_fit(76, 5, 234 - 76, &FONT_T, t, C_GRAY);
     track_view(ui.track, on, vel, mark, &play);
     ui_grid(19, on, vel, mark, play, ui.held_step);
+    for (s = 0; s < 16u; s++) { /* (0.6) TAPE DECAY: burned steps get a solid corner, fading ones a thin one */
+        const js_step_t *st = &tr->s[(ui.step_page * 16u + s) % JS_MAXSTEPS];
+        int32_t x = 4 + (int32_t)(s & 7u) * 29, y = 19 + (int32_t)(s >> 3) * 26;
+        if (!on[s]) continue;
+        if (st->flags & JS_BURN) cv_rect(x + 21, y + 15, 4, 4, C_WHITE);
+        else if (st->flags & JS_DECAY) cv_rect(x + 21, y + 18, 4, 1, C_GRAY);
+    }
     if (ui.track == AB_T_BASS) /* the notes over the boxes */
         for (s = 0; s < 16u; s++)
             if (on[s]) {
@@ -999,9 +1156,22 @@ static void draw_song(void)
     ui_fit(6, 72, 228, &FONT_XS, t, eng.lock_kick ? C_HI : C_GRAY);
     t[0] = 0; ui_cat(t, "FILL ANSWERS "); ui_cat(t, eng.fill_answers ? "ON: A LINK FILL PLAYS C" : "OFF");
     ui_fit(6, 86, 228, &FONT_XS, t, eng.fill_answers ? C_HI : C_GRAY);
+    if (ui.song_page) { /* (0.6) TAPE DECAY and DUET's link part */
+        cv_rect(0, 54, 240, 46, C_BLACK);
+        t[0] = 0; ui_cat(t, "TAPE DECAY "); ui_cat(t, eng.decay_on ? "ON  AMOUNT " : "OFF");
+        if (eng.decay_on) { ui_int(v, (int32_t)(eng.decay_amt * 100.0f + 0.5f)); ui_cat(t, v); ui_cat(t, "%"); }
+        ui_fit(6, 56, 228, &FONT_XS, t, eng.decay_on ? C_HI : C_GRAY);
+        ui_fit(6, 70, 228, &FONT_T, "REC'S NOTES FADE EACH BAR; HOLD A STEP TO BURN IT IN", C_DIM);
+        t[0] = 0; ui_cat(t, "POCKET ");
+        if (eng.pocket_amt <= 0.0f) ui_cat(t, "OFF");
+        else { ui_int(v, (int32_t)(eng.pocket_amt * 100.0f + 0.5f)); ui_cat(t, v); ui_cat(t, "%"); if (!jl_alive(&eng.link, eng.ms)) ui_cat(t, " (NO LINK)"); }
+        ui_cat(t, "  ECHO "); ui_cat(t, eng.gesture ? "ON" : "OFF");
+        ui_fit(6, 84, 228, &FONT_XS, t, C_GRAY);
+    }
     t[0] = 0; ui_cat(t, "SCENE "); ui_cat(t, eng.scene_cur >= 0 ? SCENE_NAME[eng.scene_cur] : "-");
     if (eng.scene_pending >= 0) { ui_cat(t, " > "); ui_cat(t, SCENE_NAME[eng.scene_pending]); }
     ui_cat(t, jl_alive(&eng.link, eng.ms) ? "  LINK" : "  SOLO");
+    ui_cat(t, ui.song_page ? "  OCT-: PAGE 1" : "  OCT+: PAGE 2");
     ui_fit(6, 100, 228, &FONT_XS, t, C_GRAY);
 }
 
@@ -1075,13 +1245,21 @@ static void draw_strip(void)
         g[n++] = (ui_kg_t)UI_W(0, 3, "VAR A-D");
         g[n++] = (ui_kg_t)UI_W(8, 13, "FORM");
         break;
+    case L_ENERGY:
+        enc[0] = "ENERGY";
+        g[n++] = (ui_kg_t)UI_W(0, 15, "TAP A STEP: ITS LEVEL 1-4");
+        break;
+    case L_DUET:
+        if (eng.duet_answer) g[n++] = (ui_kg_t)UI_W(0, 15, "PLAY THE BASS: IT ANSWERS");
+        else g[n++] = (ui_kg_t)UI_W(0, 15, "K1 ANSWER K2 HOW K3 POCKET K4 ECHO");
+        break;
     case L_ERASE:
         g[n++] = (ui_kg_t)UI_W(0, 15, "CLEAR STEP");
         g[n++] = (ui_kg_t)UI_B(0, 2, "CLEAR TRACK");
         break;
     default:
-        if (ui.rec || ui.page == PG_SOUND) {
-            g[n++] = (ui_kg_t)UI_W(0, 15, ui.rec && ui.page != PG_SOUND ? "PLAY + RECORD THE TRACK" : "PLAY THE TRACK");
+        if (ui.rec || ui.page == PG_SOUND || eng.duet_answer) {
+            g[n++] = (ui_kg_t)UI_W(0, 15, ui.rec && ui.page != PG_SOUND ? "PLAY + RECORD THE TRACK" : eng.duet_answer && ui.page != PG_SOUND ? "PLAY THE BASS: IT ANSWERS" : "PLAY THE TRACK");
             g[n++] = (ui_kg_t)UI_B(0, 10, "(BLACK KEYS PLAY TOO)");
         } else {
             g[n++] = (ui_kg_t)UI_W(0, 15, ui.held_step >= 0 ? "HOLD + KNOBS EDIT THE STEP" : "STEPS: TAP ON/OFF, HOLD TO EDIT");
@@ -1117,6 +1295,16 @@ static void draw_footer(void)
     } else if (l == L_FX || (l == L_NONE && ui.page == PG_FX)) {
         name[0] = "WEIGHT"; name[1] = "DIRT"; name[2] = "WIDTH"; name[3] = "PRESSURE";
         for (k = 0; k < 4u; k++) v[k] = *bus_knob((int)k);
+    } else if (l == L_ENERGY) { /* (0.6) */
+        int m = ab_energy_curve_mode(&eng);
+        name[0] = "ENERGY"; name[1] = "CURVE"; name[2] = "AUTO LVL";
+        v[0] = eng.en.knob; v[1] = (float)m / 2.0f; vt[1] = ab_curve_name[m]; v[2] = 0.0f; vt[2] = "TURN";
+    } else if (l == L_DUET) {
+        name[0] = "ANSWER"; name[1] = "HOW"; name[2] = "POCKET"; name[3] = "ECHO";
+        v[0] = eng.duet_answer; vt[0] = eng.duet_answer ? "ON" : "OFF";
+        v[1] = (float)eng.duet_xform / (float)(AB_NANS - 1); vt[1] = ab_answer_name[eng.duet_xform % AB_NANS];
+        v[2] = eng.pocket_amt; if (eng.pocket_amt <= 0.0f) vt[2] = "OFF";
+        v[3] = eng.gesture; vt[3] = eng.gesture ? "ON" : "OFF";
     } else if (l == L_FILL) {
         name[0] = "LENGTH"; v[0] = set.fill_bars == 2 ? 1.0f : 0.5f; vt[0] = set.fill_bars == 2 ? "2 BAR" : "1 BAR";
     } else if (l == L_VARY) {
@@ -1158,6 +1346,14 @@ static void draw_footer(void)
             }
             break;
         case PG_SONG:
+            if (ui.song_page) { /* (0.6) */
+                name[0] = "DECAY"; name[1] = "AMOUNT"; name[2] = "POCKET"; name[3] = "ECHO";
+                v[0] = eng.decay_on; vt[0] = eng.decay_on ? "ON" : "OFF";
+                v[1] = eng.decay_amt;
+                v[2] = eng.pocket_amt; if (eng.pocket_amt <= 0.0f) vt[2] = "OFF";
+                v[3] = eng.gesture; vt[3] = eng.gesture ? "ON" : "OFF";
+                break;
+            }
             name[0] = "PHRASE"; name[1] = "QUANT"; name[2] = "LOCK KICK"; name[3] = "FILL ANS";
             v[0] = eng.phrase / 16.0f; ui_int(b[0], eng.phrase); vt[0] = b[0];
             v[1] = (float)set.scene_quant / 5.0f; vt[1] = QUANT_NAME[set.scene_quant % 6u];
@@ -1203,7 +1399,15 @@ static void lights(void)
     else if (l == L_VARY) {
         for (k = 0; k < AB_NVAR; k++) dimk |= ui_white_bit((int)k);
         keys |= ui_white_bit(eng.cr_play) | ui_white_bit(8 + eng.form);
-    } else if (ui.rec || ui.page == PG_SOUND) {
+    } else if (l == L_ENERGY) { /* (0.6) the steps that play at this ENERGY lit, the others dim */
+        const js_track_t *tr = cur_track();
+        uint32_t lv = je_level(eng.en.value);
+        for (k = 0; k < 16u; k++) {
+            const js_step_t *st = &tr->s[(ui.step_page * 16u + k) % JS_MAXSTEPS];
+            if (!(st->flags & JS_ON) || ui.step_page * 16u + k >= tr->len) continue;
+            if ((st->lvl ? st->lvl : 1u) <= lv) keys |= ui_white_bit((int)k); else dimk |= ui_white_bit((int)k);
+        }
+    } else if (ui.rec || ui.page == PG_SOUND || eng.duet_answer) {
         for (k = 0; k < NKEYS; k++) if (((key_note(k) - eng.root) % 12 + 12) % 12 == 0) dimk |= 1u << k;
         keys = ui.in.keys;
     } else {
@@ -1237,6 +1441,12 @@ void app_frame(void)
     uint32_t now = plat_ms();
     input();
     lights();
+    { /* (0.6) TAPE DECAY: once a bar, the fading steps fade */
+        uint32_t f = plat_lock();
+        int ran = ab_decay_tick(&eng);
+        plat_unlock(f);
+        if (ran) dirty = 1, ui.redraw = 1;
+    }
     /* autosave: 3 s after STOP, when something changed */
     if (ui.was_running && !eng.clock.running) ui.stop_ms = now;
     ui.was_running = eng.clock.running;

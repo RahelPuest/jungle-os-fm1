@@ -11,6 +11,7 @@
 #include "../../../shared/fx/jo_fx.h"
 #include "../../../shared/sweetspot/jo_graph.h"
 #include "../../../shared/link/jo_link.h"
+#include "../../../shared/seq/jo_energy.h"
 
 enum { AB_T_BASS, AB_T_STAB, AB_T_PAD, AB_NTRACKS };
 enum { AB_PART_BASS, AB_PART_STAB, AB_PART_PAD, AB_NPARTS };
@@ -45,6 +46,14 @@ extern const char *const ab_fill_name[AB_NFILLS];
 extern const char *const ab_line_name[AB_NLINES];
 extern const char *const ab_stab_rhythm_name[AB_NRHYTHMS];
 extern const char *const ab_pad_rhythm_name[AB_NRHYTHMS];
+/* (0.6) DUET: ANSWER ME's transforms of the bar you played */
+enum { AB_ANS_ECHO, AB_ANS_INVERT, AB_ANS_RETRO, AB_ANS_DISPLACE, AB_ANS_OCT_DOWN, AB_ANS_SPARSE, AB_NANS };
+extern const char *const ab_answer_name[AB_NANS];
+/* (0.6) the ENERGY curve's modes */
+enum { AB_CURVE_OFF, AB_CURVE_REC, AB_CURVE_PLAY, AB_NCURVES };
+extern const char *const ab_curve_name[AB_NCURVES];
+#define AB_NGEST 48
+typedef struct { uint16_t at, end; uint8_t type, val; } ab_gest_t; /* type 0: a performance FX (val), 1..4: knob 0..3 */
 typedef struct {
     int8_t line;   /* the pattern whose bass line plays (0..AB_NPATTERNS-1), -1: A's line */
     int8_t node;   /* the sweetspot node it sounds as, -1: A's sound */
@@ -121,7 +130,34 @@ typedef struct {
     float tape_bass, tape_sub, tape_gain;
     float glide_amt;                   /* GLIDE: 0.5 = the node's glide */
     float humanize;                    /* HUMANIZE 0..1: velocity and microtiming offsets in the playback */
-    float energy;
+    /* (0.6) ENERGY: the knob or its curve gates the steps' levels (seq.energy) and moves the sound a little; over the
+     * link both ways (CC 109). midi_out: where the engine sends (the app: USB; 0: nowhere) */
+    je_energy_t en;
+    uint8_t en_armed;                  /* curve REC: recording starts at the next phrase's start */
+    uint8_t en_sent;                   /* the last ENERGY value sent (0..127, 0xFF: none) */
+    void (*midi_out)(uint32_t pkt);
+    /* (0.6) DUET. ANSWER ME: the bar you played (cap_*), answered the next bar (ans_*) */
+    uint8_t duet_answer, duet_xform;
+    uint8_t cap_note[16], cap_vel[16], cap_n;
+    uint32_t cap_bar;
+    uint8_t ans_note[16], ans_vel[16], ans_valid;
+    uint32_t ans_bar;
+    /* POCKET: the kicks of the last bar (from the link's kick triggers) and the drums' DENSITY (CC 112) */
+    float pocket_amt, drum_density;
+    uint16_t kick_cur, kick_next, kick_mask;
+    uint32_t kick_bar;
+    uint8_t pocket_carry_on, pocket_last;
+    js_step_t pocket_carry;
+    /* GESTURE ECHO: one phrase's performance FX and knob moves, played back the next phrase at half depth */
+    uint8_t gesture;
+    ab_gest_t g_rec[AB_NGEST], g_play[AB_NGEST];
+    uint8_t g_nrec, g_nplay, perf_user, perf_echo, g_last_user;
+    uint16_t perf_echo_end;
+    float g_base_rec[4], g_base_play[4], echo_off[4];
+    /* (0.6) TAPE DECAY: what REC records fades a little each bar (ab_decay_tick) */
+    uint8_t decay_on;
+    float decay_amt;
+    uint32_t decay_bar;
     /* master */
     jf_neuro_t master;
     jf_delay_t delay;
@@ -195,3 +231,17 @@ int ab_record(ab_engine_t *e, int track, int note, float vel);
 typedef struct { float v[JN_NPARAMS]; int8_t explore; uint8_t mutated; } ab_sound_state_t;
 void ab_sound_get(const ab_engine_t *e, ab_sound_state_t *s);
 void ab_sound_set(ab_engine_t *e, const ab_sound_state_t *s);
+/* (0.6) ENERGY: the knob (main loop; sends CC 109 when its value changes), the curve (AB_CURVE_*), the levels of a
+ * track's steps from their musical role (downbeat and backbeat 1, other hits 2, soft hits 3, ratchets and offbeat
+ * 16ths 4) */
+void ab_energy_set(ab_engine_t *e, float v);
+void ab_energy_curve(ab_engine_t *e, int mode);
+int ab_energy_curve_mode(const ab_engine_t *e);
+void ab_auto_levels(ab_engine_t *e, int track);
+/* (0.6) DUET */
+void ab_set_answer(ab_engine_t *e, int on);
+void ab_gesture_knob(ab_engine_t *e, int k, float v);  /* a knob move for GESTURE ECHO (0 CHAR 1 MOTION 2 BITE 3 GLIDE) */
+uint16_t ab_pocket_mask(const ab_engine_t *e, uint32_t bar); /* the kick positions POCKET avoids in bar */
+/* (0.6) TAPE DECAY: once a bar while playing, every decaying step of the playing pattern fades; returns 1 when it
+ * ran (the main loop, under the render's lock) */
+int ab_decay_tick(ab_engine_t *e);

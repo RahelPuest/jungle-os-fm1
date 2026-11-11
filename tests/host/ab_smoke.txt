@@ -743,6 +743,135 @@ turn K3 1
 wait 80
 turn K4 1
 wait 80
+# (0.6) ENERGY: hold HOME. K1 the ENERGY, white keys a step's level, K2 the curve (REC armed), K3 AUTO LEVELS
+tap HOME
+wait 100
+press HOME
+wait 150
+turn K1 -30
+wait 120
+tapkey w1
+wait 80
+tapkey w1
+wait 80
+turn SELECT -5
+wait 80
+turn K2 1
+wait 150
+shot ab_layer_energy.png
+turn K3 1
+wait 100
+turn K2 1
+wait 80
+turn K2 -2
+wait 80
+turn SELECT 5
+turn K1 30
+wait 100
+release HOME
+wait 200
+# the link: alive, Break Surgeon's DENSITY and two kicks a bar (POCKET learns them)
+midi BF 66 01
+midi BF 70 50
+midi BF 6D 64
+wait 100
+midi 9F 24 78
+wait 690
+midi 9F 24 78
+wait 690
+midi BF 66 01
+midi 9F 24 78
+# DUET: hold SEQ. K1 ANSWER ME, K2 its transform (every one), K3 POCKET, K4 GESTURE ECHO
+press SEQ
+wait 120
+turn K3 30
+wait 80
+turn K4 1
+wait 80
+turn K2 1
+wait 80
+turn K2 1
+wait 80
+turn K2 1
+wait 80
+turn K2 1
+wait 80
+turn K2 1
+wait 80
+turn K2 -5
+wait 80
+turn K1 1
+midi BF 66 01
+wait 150
+shot ab_layer_duet.png
+release SEQ
+wait 100
+# a bar played; the next one is the machine's answer
+tapkey w0 110
+wait 170
+tapkey w2 100
+wait 170
+tapkey w4 100
+wait 340
+tapkey w7 120
+wait 1400
+shot ab_duet_answer.png
+wait 600
+press SEQ
+wait 80
+turn K1 -1
+turn K3 -30
+turn K4 -1
+release SEQ
+wait 150
+# GESTURE ECHO: an FX held and a knob turned, then a phrase later they come back
+press SEQ
+turn K4 1
+release SEQ
+press FX
+key w2 down
+wait 400
+key w2 up
+release FX
+turn K1 10
+wait 6000
+press SEQ
+wait 150
+shot ab_layer_duet_echo.png
+turn K4 -1
+release SEQ
+wait 100
+# TAPE DECAY: SONG's second knob page
+tap ARP
+wait 100
+tap OCT+
+wait 100
+turn K1 1
+turn K2 10
+wait 150
+shot ab_song_decay.png
+tap HOME
+wait 100
+tap REC
+wait 100
+tapkey w3 110
+wait 300
+tapkey w9 100
+wait 300
+tap REC
+wait 100
+tapkey w6
+wait 100
+key w6 down
+wait 700
+key w6 up
+wait 3000
+shot ab_decay.png
+tap ARP
+wait 80
+turn K1 -1
+tap OCT-
+wait 80
 tap HOME
 tap PLAY
 wait 300

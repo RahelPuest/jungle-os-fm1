@@ -24,6 +24,8 @@ layer.
 6. **Tap ENV:** a fill in the last bar of the phrase. **Hold ENV + white 1–4:** a fill from the next bar.
 7. **Hold LFO + white 9 to 14:** a FORM: the bass answers itself, A B A C.
 8. **Tap REC** and play the keys: they are recorded into the track. Tap REC again to stop.
+9. **Hold HOME** and turn K1: ENERGY, the whole bass from its skeleton to everything. **Hold SEQ:** DUET, where the
+   machine answers what you play and keeps the bass out of Break Surgeon's kicks.
 
 The same buttons do the same on BREAK SURGEON.
 
@@ -64,8 +66,8 @@ only under a fill: put a few extra notes there and every fill brings them.
 
 | Button | Tap | Hold: the layer |
 |---|---|---|
-| HOME | HOME (the steps) | — |
-| SEQ | SEQUENCE: the three tracks, lengths, mutes | — |
+| HOME | HOME (the steps) | **ENERGY** (0.6): SELECT or K1 = ENERGY, white = a step's level 1–4, K2 = the CURVE, K3 = AUTO LEVELS |
+| SEQ | SEQUENCE: the three tracks, lengths, mutes | **DUET** (0.6): K1 ANSWER ME, K2 its transform, K3 POCKET, K4 GESTURE ECHO |
 | EDIT | SOUND: the track's sound in depth; the keys play it | — |
 | FX | FX: NEURO PRESSURE | **FX:** white 1–8 = OCT UP, OCT DOWN, FILTER DIVE, WOBBLE, STUTTER, TAPE STOP, BITE MAX, SUB ONLY, while held. K1–K4: WEIGHT, DIRT, WIDTH, PRESSURE |
 | ARP | SONG: form, phrase, link helpers | **SONG:** white 1–8 = queue scene 1–8, white 9–12 = queue P1–P4, black 1–3 = mute / unmute BASS, STAB, PAD |
@@ -128,6 +130,48 @@ With REC on, the keys play the selected track and write each note into its neare
 the nearest chord degree, with the velocity. OCT− / OCT+ then move the keyboard. A whole record pass is one UNDO.
 Hold REC to erase steps or a track.
 
+### ENERGY (hold HOME)
+
+![ENERGY held: the value, the curve, the selected track's step levels](img/layer_energy.png "ENERGY held")
+
+Every step has an ENERGY level, 1 to 4. ENERGY decides which play: at 0–25 % only level 1, at 75–100 % all four.
+Level 1 is the skeleton (the downbeat, the bar's middle), 2 the other notes, 3 the soft ones, 4 the offbeat 16ths
+and ratchets. The library's lines and the patterns come with levels; **K3 AUTO LEVELS** sets them again for the
+selected track from the notes' roles, and a **white key** steps that step's level 1 → 2 → 3 → 4. Lower ENERGY also
+takes some BITE out of the bass and darkens the pad; at 100 % it sounds as before.
+
+- **SELECT or K1:** ENERGY. The header shows it as a thin bar (white while a curve plays).
+- **K2 CURVE:** REC records one phrase of the knob from the next phrase's start, then plays it every phrase (a
+  build-up as one movement); OFF goes back to the knob.
+- **Over the link:** ENERGY goes both ways (CC 109). Turn it on either FM-1 and the other follows.
+
+### DUET (hold SEQ): you and the machine
+
+![DUET held: ANSWER ME, POCKET with the kicks it heard, GESTURE ECHO](img/layer_duet.png "DUET held")
+
+- **ANSWER ME (K1, K2):** with it on, the keys play the bass live, and the bass line's own steps rest. After every
+  bar you played, the next bar the machine answers with your notes transformed (K2): **ECHO** (as you played),
+  **INVERT** (mirrored around the root, in the scale), **RETRO** (backwards), **DISPLACE** (an 8th late), **OCT DOWN**,
+  **SPARSE** (every second note). The answer sounds in variation C's sound. A bar you leave silent gets no answer;
+  notes you play over the answer are not answered.
+- **POCKET (K3):** with Break Surgeon linked, Abyss hears its kicks (the link's kick triggers) and moves every bass
+  note that would fall on one of last bar's kicks to the next gap. Break Surgeon also sends how busy its drums were
+  (DENSITY, CC 112): busy drums thin the bass towards its downbeat, sparse drums let it fill in; K3 is how much.
+  Without the link it shows NO LINK and does nothing.
+- **GESTURE ECHO (K4):** the performance FX you hold and the bass knobs you turn in one phrase come back in the next,
+  half as deep (an FX half as long, a knob half the way).
+
+![ANSWER ME: the answer bar, variation C in the header](img/duet_answer.png "ANSWER ME answering")
+
+### TAPE DECAY (SONG page, OCT+)
+
+![SONG's second knob page: TAPE DECAY, its amount, POCKET, ECHO](img/song_decay.png "TAPE DECAY")
+
+On SONG, OCT+ turns to the second knob page: K1 DECAY on / off, K2 AMOUNT, K3 POCKET, K4 GESTURE ECHO (OCT−: back).
+With DECAY on, every note REC records fades a little each bar and goes after some bars (the more AMOUNT, the
+sooner): a pattern you keep alive by playing. **Hold a step half a second** (no knob turned) to burn it in: it
+stays, marked with a solid corner; a fading step has a thin one.
+
 ## The pages
 
 ### SEQUENCE (SEQ)
@@ -167,7 +211,7 @@ sub), K4 PRESSURE (glue and density with a compensating trim). PRESET: the outpu
 ALGO: the FORM. K1 PHRASE (4, 8, 16 bars: the header's BAR count, the fills' and PHRASE END's grid). K2 QUANT: when
 scenes land (NOW, BEAT, BAR, 2 BAR, 4 BAR, PHRASE; PHRASE also lands patterns and variations at the phrase's end).
 K3 **LOCK TO KICK**: with Break Surgeon linked, the bass plays on its kicks, the line giving the notes. K4 **FILL
-ANSWERS**: a fill from Break Surgeon makes its bars play variation C.
+ANSWERS**: a fill from Break Surgeon makes its bars play variation C. OCT+: the second knob page (TAPE DECAY above).
 
 ### SYSTEM (GLO)
 
@@ -182,5 +226,6 @@ listening yet ([docs/development/sweetspots.md](https://github.com/RahelPuest/ju
 ## Saving
 
 SAVE saves the settings, the four patterns and the scenes (not while playing: a flash write stalls the sound). It
-also happens by itself 3 s after STOP when something changed. 0.5 changed the stored formats: settings and patterns
-saved by 0.4 load as the defaults once.
+also happens by itself 3 s after STOP when something changed. ENERGY, ANSWER ME's transform, POCKET, GESTURE ECHO
+and TAPE DECAY are saved with the settings (ANSWER ME itself starts off). 0.6 changed the stored formats again:
+settings and patterns saved by 0.5 load as the defaults once; scenes are kept.
