@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.2 (unreleased): the foghorn, FM
+## 0.7.2 (2026-11-11): the foghorn, FM
 
 Not installed on a physical FM-1; not checked by ear.
 

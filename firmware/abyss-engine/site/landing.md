@@ -4,6 +4,8 @@ ABYSS ENGINE is the bass half of JUNGLE OS, a drum & bass live rig of two M-VAVE
 
 ![ABYSS ENGINE's main page: the bass line with its notes](img/home.png "ABYSS ENGINE on the FM-1's screen")
 
+New in 0.7.2: the FOGHORN as an FM sound, as the tutorials make it (stacked squares FMed by a sine three octaves up, an opening 24 dB filter, hard drive, reverb).
+
 New in 0.7.1: the REESE, the HOOVER and the FOGHORN rebuilt after the classic patches (two saws weaving against each other; PWM saws on three octaves with a deep chorus and a dive onto the note; an octave-down horn through a 24 dB filter and hard drive).
 
 New in 0.7: the bass. Five models (FM NEURO, REESE, WOMP, HORN, SINE/808), sixteen sounds, a phaser and a pitch envelope, width in the mid-bass only, and thirteen STYLES on ALGO: each brings its sound, its typical line, articulation and answers.
@@ -22,7 +24,7 @@ Version {{VERSION}}. **Not yet tested on a physical FM-1.** It is tested in soft
 - [Manual](manual/): every page, button and key.
 - [Install](install/): from Chrome or Edge, with the FM-1 connected by USB.
 - [Download {{PKG}}](firmware/{{PKG}}): for the command-line installer, `python3 base/tools/fm1_install.py {{PKG}}`.
-- Earlier versions: [0.7.0](firmware/abyssengine-0.7.0.fwsc), [0.6.0](firmware/abyssengine-0.6.0.fwsc), [0.5.0](firmware/abyssengine-0.5.0.fwsc), [0.4.0](firmware/abyssengine-0.4.0.fwsc) (the 0.4 controls), [0.3.1](firmware/abyssengine-0.3.1.fwsc), [0.3.0](firmware/abyssengine-0.3.0.fwsc), [0.2.0](firmware/abyssengine-0.2.0.fwsc) (the 0.2 screens), [0.1.0-dev](firmware/abyssengine-0.1.0-dev.fwsc) (the first kit and controls).
+- Earlier versions: [0.7.1](firmware/abyssengine-0.7.1.fwsc), [0.7.0](firmware/abyssengine-0.7.0.fwsc), [0.6.0](firmware/abyssengine-0.6.0.fwsc), [0.5.0](firmware/abyssengine-0.5.0.fwsc), [0.4.0](firmware/abyssengine-0.4.0.fwsc) (the 0.4 controls), [0.3.1](firmware/abyssengine-0.3.1.fwsc), [0.3.0](firmware/abyssengine-0.3.0.fwsc), [0.2.0](firmware/abyssengine-0.2.0.fwsc) (the 0.2 screens), [0.1.0-dev](firmware/abyssengine-0.1.0-dev.fwsc) (the first kit and controls).
 - [BREAK SURGEON](../break-surgeon/), the rhythm half, and [JUNGLE OS](../), both together.
 - [Source code on GitHub](https://github.com/RahelPuest/jungle-os-fm1).
 
