@@ -79,25 +79,44 @@ void jd_trigger(jd_voice_t *v, const jd_sound_t *s, float vel, int open)
     v->noise_mix = 0.0f;
     v->drive = 1.0f;
     v->res = 0.0f;
-    v->svf.s1 = v->svf.s2 = v->svf2.s1 = v->svf2.s2 = 0.0f;
+    v->knock = 0.0f;
+    v->knock_mul = 1.0f;
+    v->clap = 0.0f;
+    v->clap_env = 1.0f;
+    v->att = 0.0f;
+    v->t = 0;
+    v->hold = 0;
+    v->svf.s1 = v->svf.s2 = v->svf2.s1 = v->svf2.s2 = v->svf_c.s1 = v->svf_c.s2 = 0.0f;
     for (i = 0; i < 6u; i++)
         v->ph[i] = 0.0f;
     switch (v->model) {
-    case JD_KICK: { /* WEIGHT decay, PUNCH sweep + beater click, PITCH body (45-75 Hz), DRIVE */
-        float hard = 0.55f + 0.45f * jo_clampf(vel, 0.0f, 1.0f); /* a harder hit: more sweep, more click */
-        float tau = lmap(1.0f - m1, 0.004f, 0.022f);
-        v->f0 = xmap(m2, 45.0f, 75.0f) * tune;
-        v->fsweep = v->f0 * lmap(m1, 2.5f, 8.0f) * hard;
+    case JD_KICK: {
+        /* (0.7) three layers, as drum & bass kicks are built (docs/research/dnb-drums.md):
+         *  the TRANSIENT: a beater blip (1.8-4 kHz) and a 2 ms high-passed noise tick, so the kick is heard on any
+         *    speaker;
+         *  the BODY: a sine at PITCH (45-72 Hz) dropping in two stages, a fast punch (from 3-9 x its pitch over
+         *    2.5-12 ms) and a slower knock (+30-90 % over ~30 ms, the 80-150 Hz thump), HELD at full level for
+         *    WEIGHT's 12-45 ms before it decays (WEIGHT: 80-400 ms), short enough to leave the sub its room;
+         *  the TEXTURE: an asymmetric saturation (DRIVE) that adds the second harmonic and rounds the peak.
+         * A harder hit: more punch, more click */
+        float hard = 0.55f + 0.45f * jo_clampf(vel, 0.0f, 1.0f);
+        float tau = lmap(1.0f - m1, 0.0025f, 0.012f);
+        v->f0 = xmap(m2, 45.0f, 72.0f) * tune;
+        v->fsweep = v->f0 * lmap(m1, 3.0f, 9.0f) * hard;
         v->fsweep_mul = jo_expf(-1.0f / (tau * JO_SR));
+        v->knock = v->f0 * lmap(m1, 1.0f, 2.2f) * hard;
+        v->knock_mul = jo_decay_mul(0.07f);
+        v->t = 0;
+        v->hold = (uint32_t)(xmap(m0, 0.008f, 0.035f) * JO_SR);
         v->amp = 1.0f;
-        v->amp_mul = jo_decay_mul(xmap(m0, 0.08f, 0.5f));
-        v->click = lmap(m1, 0.1f, 0.6f) * hard;            /* the beater: a tonal blip at 1.8-3.8 kHz */
-        v->click_mul = jo_decay_mul(0.0035f);
-        v->inc[1] = xmap(m1, 1800.0f, 3800.0f) * JO_INV_SR;
-        v->amp2 = lmap(m1, 0.05f, 0.3f) * hard * hard;     /* and a shorter noise snap on top */
-        v->amp2_mul = jo_decay_mul(0.0015f);
-        v->drive = 1.0f + 6.0f * m3 * m3;
-        v->outgain = g / jo_tanh(v->drive * 1.2f);         /* the driven peak held near the level */
+        v->amp_mul = jo_decay_mul(xmap(m0, 0.08f, 0.4f));
+        v->click = lmap(m1, 0.35f, 1.0f) * hard;           /* the beater blip */
+        v->click_mul = jo_decay_mul(0.006f);
+        v->inc[1] = xmap(m1, 1800.0f, 4000.0f) * JO_INV_SR;
+        v->amp2 = lmap(m1, 0.5f, 1.2f) * hard * hard;      /* the tick */
+        v->amp2_mul = jo_decay_mul(0.003f);
+        v->drive = 1.2f + 5.0f * m3 * m3;
+        v->outgain = 0.95f * g / jo_tanh(v->drive);       /* the driven peak held near the level */
         break;
     }
     case JD_SNARE:
@@ -125,25 +144,41 @@ void jd_trigger(jd_voice_t *v, const jd_sound_t *s, float vel, int open)
         v->sweep_g = jo_svf_g(xmap(bright, 3000.0f, 7000.0f));
         v->click = lmap(crack, 0.15f, 0.9f) * hard * hard;  /* the stick's crack */
         v->click_mul = jo_decay_mul(0.0015f);
+        /* (0.7) the clap layer (three bursts 7 ms apart, then a short tail, band-passed around 1.2-1.6 kHz) and the
+         * air crack (noise above ~6 kHz, 8 ms): the layers drum & bass snares stack on the drum */
+        v->t = 0;
+        v->clap = gh ? 0.0f : lmap(crack, 0.25f, 0.9f) * hard;
+        v->clap_mul = jo_decay_mul(0.004f);
+        v->clap_tail_mul = jo_decay_mul(xmap(tail, 0.04f, 0.12f));
+        v->inc[2] = jo_svf_g(1350.0f * (0.85f + 0.3f * hard));
+        v->att = lmap(crack, 0.3f, 0.9f) * hard * hard;     /* the air crack's level */
+        v->att_k = jo_decay_mul(0.008f);
         v->drive = gh ? 1.0f : 1.0f + 5.0f * m3;
-        v->outgain = (gh ? 0.9f : 0.7f) * g / jo_tanh(v->drive);
+        v->outgain = (gh ? 1.0f : 0.95f) * g / jo_tanh(v->drive);
         break;
     }
-    case JD_HATS: { /* METAL mix + spread (low: noise, a shaker; high: metal), BRIGHT high-pass, LENGTH, HUMAN */
+    case JD_HATS: {
+        /* METAL mix + spread (low: noise, a shaker; high: metal), BRIGHT, LENGTH, HUMAN. (0.7) The metal goes through
+         * two bands as on the classic drum machines (around 7 kHz and 10 kHz, BRIGHT moving both), the noise through
+         * a high-pass; closed 25-110 ms, open 5 x; a soft hit has a slower attack (a shaker's swell); and louder, so
+         * the top of the kit is heard over the break */
         float human = m3 * jo_rng_bi(&v->rng), hard = 0.5f + 0.5f * jo_clampf(vel, 0.0f, 1.0f);
         float base = xmap(0.5f, 300.0f, 520.0f) * tune * (1.0f + 0.15f * (m0 - 0.5f));
-        float len = xmap(m2, 0.012f, 0.09f) * (open ? 4.5f : 1.0f) * (0.7f + 0.3f * hard) * (1.0f + 0.25f * human);
+        float len = xmap(m2, 0.025f, 0.11f) * (open ? 5.0f : 1.0f) * (0.7f + 0.3f * hard) * (1.0f + 0.25f * human);
         for (i = 0; i < 6u; i++)
             v->inc[i] = base * HAT_RATIO[i] * (1.0f + m0 * 0.07f * (float)i) * JO_INV_SR;
-        v->tone_mix = 0.85f * m0;
-        v->noise_mix = 1.0f - 0.55f * m0;
-        v->bright_g = jo_svf_g(xmap(m1, 5000.0f, 11500.0f) * (0.8f + 0.2f * hard));
-        v->res = 0.3f;
+        v->tone_mix = 0.9f * m0;
+        v->noise_mix = 1.0f - 0.5f * m0;
+        v->bright_g = jo_svf_g(xmap(m1, 5500.0f, 9000.0f) * (0.85f + 0.15f * hard));
+        v->sweep_g = jo_svf_g(xmap(m1, 8000.0f, 12500.0f));
+        v->res = 0.45f;
         v->amp = 0.0f;
         v->amp_mul = 0.0f;
         v->amp2 = 1.0f;
         v->amp2_mul = jo_decay_mul(len);
-        v->outgain = 0.6f * g * (1.0f + 0.2f * human);
+        v->att = 0.0f;
+        v->att_k = 1.0f - jo_expf(-1.0f / (lmap(1.0f - hard, 0.0002f, 0.003f) * (1.0f - 0.7f * m0) * JO_SR));
+        v->outgain = 1.1f * g * (1.0f + 0.2f * human);
         break;
     }
     case JD_PERC: { /* a tonal body plus a band of noise, voiced by the variant */
@@ -198,15 +233,20 @@ int jd_render(jd_voice_t *v, float *out, uint32_t n)
         float s = 0.0f, nz = jo_noise(&v->rng);
         switch (v->model) {
         case JD_KICK: {
-            float f = v->f0 + v->fsweep;
-            float body;
+            float f = v->f0 + v->fsweep + v->knock;
+            float body, x;
             v->fsweep *= v->fsweep_mul;
+            v->knock *= v->knock_mul;
             v->ph[0] = jo_wrap1(v->ph[0] + f * JO_INV_SR);
             v->ph[1] = jo_wrap1(v->ph[1] + v->inc[1]);
             body = jo_sin_turns(v->ph[0]);
-            s = (body * v->amp + jo_sin_turns(v->ph[1]) * v->click + jo_hp1(&v->hp, nz, 0.5f) * v->amp2) * v->drive;
-            s = jo_tanh(s * 1.2f) * v->outgain;
-            v->amp *= v->amp_mul;
+            v->att += (1.0f - v->att) * 0.09f; /* the transient's 0.25 ms onset: a tick, not a step */
+            x = (body * v->amp + (1.1f * jo_sin_turns(v->ph[1]) * v->click + jo_hp1(&v->hp, nz, 0.3f) * v->amp2) * v->att) *
+                v->drive;
+            /* asymmetric saturation: tanh plus an even term (the second harmonic), its DC taken out */
+            s = jo_dcb(&v->dcb, jo_tanh(x) + 0.18f * x * x / (1.0f + x * x)) * v->outgain;
+            if (v->t < v->hold) v->t++; /* the hold, then the decay */
+            else v->amp *= v->amp_mul;
             v->click *= v->click_mul;
             v->amp2 *= v->amp2_mul;
             break;
@@ -224,6 +264,19 @@ int jd_render(jd_voice_t *v, float *out, uint32_t n)
             o2 = jo_svf(&v->svf2, nz, v->sweep_g, 0.35f);
             s = body + (o.bp + 0.7f * o.hp) * v->amp2 * v->noise_mix + o2.bp * v->snap * 1.6f +
                 jo_hp1(&v->hp, nz, 0.6f) * v->click;
+            if (v->clap > 1e-4f) { /* the clap: bursts at 0, 7 and 14 ms (each re-opens it), then its tail */
+                uint32_t b1 = (uint32_t)(0.007f * JO_SR), b2 = 2u * b1;
+                jo_svf_out_t c = jo_svf(&v->svf_c, nz, v->inc[2], 0.55f);
+                if (v->t == b1 || v->t == b2) v->clap_env = 1.0f;
+                s += c.bp * v->clap * v->clap_env * 1.4f;
+                v->clap_env *= v->t < b2 ? v->clap_mul : v->clap_tail_mul;
+                if (v->t >= b2 && v->clap_env < 1e-4f) v->clap = 0.0f;
+            }
+            if (v->att > 1e-4f) { /* the air crack */
+                s += jo_hp1(&v->hp2, nz, 0.62f) * v->att;
+                v->att *= v->att_k;
+            }
+            v->t++;
             s = jo_tanh(s * v->drive) * v->outgain;
             v->amp *= v->amp_mul;
             v->amp2 *= v->amp2_mul;
@@ -233,14 +286,19 @@ int jd_render(jd_voice_t *v, float *out, uint32_t n)
         }
         case JD_HATS: {
             float sq = 0.0f;
-            jo_svf_out_t o;
             for (k = 0; k < 6u; k++) {
                 v->ph[k] = jo_wrap1(v->ph[k] + v->inc[k]);
                 sq += v->ph[k] < 0.5f ? 1.0f : -1.0f;
             }
-            o = jo_svf(&v->svf, sq * (1.0f / 6.0f) * v->tone_mix + nz * v->noise_mix, v->bright_g, v->res);
-            o = jo_svf(&v->svf2, o.hp, v->bright_g * 1.4f, 0.1f);
-            s = (o.hp + 0.3f * o.bp) * v->amp2 * v->outgain;
+            {
+                /* (0.7) the metal through two bands (as on the classic machines), the noise high-passed */
+                float metal = sq * (1.0f / 6.0f) * v->tone_mix;
+                jo_svf_out_t b1 = jo_svf(&v->svf, metal, v->bright_g, v->res);
+                jo_svf_out_t b2 = jo_svf(&v->svf2, metal + nz * v->noise_mix, v->sweep_g, 0.2f);
+                float air = jo_hp1(&v->hp2, jo_hp1(&v->hp, nz, 0.55f), 0.55f) * v->noise_mix;
+                v->att += (1.0f - v->att) * v->att_k;
+                s = (1.3f * b1.bp + 0.9f * b2.hp + 0.8f * air) * v->amp2 * v->att * v->outgain;
+            }
             v->amp2 *= v->amp2_mul;
             break;
         }

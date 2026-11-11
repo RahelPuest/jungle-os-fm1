@@ -496,3 +496,38 @@ wait 150
 tap HOME
 tap PLAY
 wait 200
+# (0.7) the built-in breaks: SOUND on the BREAK track, ALGO through all six (each name fits), then the new grooves
+tap PLAY
+tap EDIT
+wait 150
+turn SELECT -8
+wait 150
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+shot bs_break_funky.png
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+shot bs_break_amen.png
+turn ALGO -1
+wait 300
+tap HOME
+wait 150
+turn ALGO 14
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+shot bs_groove_edit.png
+turn ALGO 1
+wait 300
+tap PLAY
+wait 200

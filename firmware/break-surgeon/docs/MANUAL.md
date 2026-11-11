@@ -270,8 +270,8 @@ fast: at 5 % a full-velocity step lasts about 60 bars, at 100 % about 9.
 The selected track's sound in depth; the white keys audition it (BREAK: slice 1–16; a drum: softer at the left,
 harder at the right). K1 **RHYTHM** turns the break from CLEAN through ROLLING and CHOPPED to GLITCHED (the rhythm
 graph), K2 **KIT** the whole kit's character (the kit graph), K3 **FILL AMT** how hard ROLL fills build, K4 the
-track's **LEVEL**. ALGO: the kit's next sweetspot (KIT NODE), on PERC its voice (TOM, RIM, SHAKER, CLICK). PRESET:
-the pattern.
+track's **LEVEL**. ALGO: on BREAK the break (the six built-in ones, or a bank's), on PERC its voice (TOM, RIM,
+SHAKER, CLICK), on the other drums the kit's next sweetspot (KIT NODE). PRESET: the pattern.
 
 ![SOUND on the KICK track](img/sound_kick.png "SOUND on the KICK track")
 
@@ -281,23 +281,49 @@ sit behind the snare instead of sounding like small copies of it.
 
 The models:
 
-- **PUNCH KICK:** a short body at 45–75 Hz (55 Hz by default; the deep sub is Abyss Engine's job) with a pitch
-  sweep (PUNCH), a tonal beater click at 1.8–3.8 kHz and a noise snap on top.
+- **PUNCH KICK** (0.7: built as drum & bass kicks are, docs/research/dnb-drums.md): three layers.
+  - The **transient**: a beater blip at 1.8–4 kHz and a noise tick, so the kick is heard on any speaker.
+  - The **body**: a sine at PITCH (45–72 Hz, 54 Hz by default; the deep sub is Abyss Engine's job) dropping in two
+    stages, a fast punch and a slower knock (the 80–150 Hz thump), held at full level for a moment before it decays.
+    WEIGHT sets the hold and the length (about 130 ms by default: short, so the sub has its room), PUNCH the punch,
+    the knock and the click.
+  - The **texture**: DRIVE, an asymmetric saturation that adds the second harmonic and rounds the peak.
 - **CRACK SNARE:** a tuned body (TUNE) with a pitch drop; the stick's crack, the wires' snap and the wires' tail,
-  each with its own envelope. BODY sets how much drum there is, CRACK the attack, TAIL how long the wires ring,
-  PRESSURE the drive.
+  each with its own envelope; (0.7) a **clap** layered on it (three bursts 7 ms apart, lined up with the drum) and
+  an **air crack** above 6 kHz, both growing with CRACK and with how hard it is hit. BODY sets how much drum there
+  is, CRACK the attack, TAIL how long the wires ring, PRESSURE the drive.
 - **GHOST SNARE:** the same snare drum played softly: TONE is its brightness, SNAP its attack, DECAY its tail.
   SWING moves the generated ghosts late (about 8 ms at the default), the lazy feel of a drummer's ghost notes.
-- **METAL HATS:** METAL low is noise, like a shaker; METAL high is the six-oscillator metallic sound. BRIGHT, LENGTH
-  (open hats are longer), HUMAN (each hit a little different).
+- **METAL HATS:** METAL low is noise, like a shaker; METAL high is the six-oscillator metallic sound, through two
+  bands around 7 and 10 kHz as on the classic drum machines (0.7). BRIGHT, LENGTH (closed 25–110 ms, open five times
+  longer; a closed hat chokes an open one), HUMAN (each hit a little different). Soft hits start a little slower,
+  like a shaker.
 - **BREAK PERC** and **IMPACT FX**.
 
-**The built-in test break** plays the Amen pattern, the groove of the most sampled break in jungle, at 170 BPM:
-kicks on 1, the "and" of 1, the "and" of 3 and right after it; full snares on 2 and 4, lighter ones in between;
-a ride on 8ths with its quarters on the bell. Each hit is synthesized by BREAK SURGEON's own drum models, mixed in
-a small room and stored as a sampler would store it (12 bits at 22 kHz). It is the pattern only: no sound of the
-original recording (The Winstons, "Amen, Brother", 1969) is used, as that recording is copyrighted. To play the
-real break, or any other, load a recording you have the rights to (below).
+### The built-in breaks
+
+![SOUND on the BREAK track: FUNKY DRUMMER, the fourth of the six built-in breaks](img/break_chooser.png "The built-in breaks")
+
+Without a bank, BREAK SURGEON plays one of six built-in breaks; on the SOUND page of the BREAK track, **ALGO** steps
+through them (saved with SAVE). Each is the rhythm of a classic break, one bar at 170 BPM, played by BREAK SURGEON's
+own drum models as a drummer would (velocities varied, ghosts late, its own swing), in a small room, stored as a
+12-bit sampler would store it. The rhythms only: no sound of any of the records is used (the recordings are
+copyrighted). To play the real breaks, load recordings you have the rights to (below).
+
+| Break | The rhythm | Use it for |
+|---|---|---|
+| AMEN 170 | kicks on 1, the "and" of 1, the "and" of 3 and right after; snares on 2 and 4, lighter ones between; a ride, the bell on the quarters | jungle, the edits (JUNGLE EDIT, SNARE ROLL EDIT) |
+| THINK 170 | the kick pushed onto the "and" of 2; busy 16th hats, an open hat on the "and" of 4 | rollers, the busy top over a 2-step |
+| APACHE 170 | a straight boom-bap under 8th hats and a bongo run | liquid, percussive intros |
+| FUNKY DRUMMER | ghost snares around the backbeat, 16th hats with two open hats, swung | swung rollers, liquid |
+| HOT PANTS 170 | a syncopated kick, ghosts before the backbeat, accented 16th hats | dancefloor, a driving top |
+| ROLLER 170 | an original jungle roller: the 2-step kick, rolling ghosts, a shaker on 8ths | under synthesized drums |
+
+The grids, the sources and what is approximate: docs/research/dnb-drums.md.
+
+**The break under the drums** (0.7). While the KICK track plays, the break's lowest end (below ~70 Hz) is taken out,
+so the kick and the sub own it, and the break ducks a little (up to −3.5 dB) under each synthesized kick: the
+classic way of layering a break over programmed drums.
 
 ## The patterns and the grooves
 
@@ -307,7 +333,7 @@ microtiming):
 | Pattern | |
 |---|---|
 | P1 DROP | the break whole, under a two-step kick (1 and the "and" of 3) and the backbeat (2 and 4), offbeat hats, ghosts |
-| P2 ROLLER | the break edited (its first half again, the last snare doubled into a roll), a rolling kick, 16th shakers, more ghosts |
+| P2 ROLLER | the break re-chopped the classic way (its first half, its first four 16ths again, the last snares doubled, the second into a roll), a rolling kick, 16th shakers, more ghosts |
 | P3 HALF-TIME | kick and snare at half time, the break on 8ths |
 | P4 INTRO | the break thinned out, no synthesized kick or snare |
 
@@ -333,7 +359,11 @@ the pattern back to before the grooves you browsed.
 | JUMP UP | the kick bouncing on 3 and its "and" |
 | TECHSTEP | hard and straight, the kick pushing before 4 |
 | DANCEFLOOR | a kick before the second snare, ghosts ahead of the snares |
-| AMEN | the break alone, in order (the built-in break is the Amen pattern) |
+| AMEN | the break alone, in order |
+| LIQUID | the 2-step softened, ghosts all around the backbeat, 16th hats shuffled a little (swing 54 %) |
+| NEURO | tight and dry: the kick syncopated off the 1 and before the second snare, straight 8th hats |
+| JUNGLE EDIT | the classic re-chop: the break's first half, its first four 16ths again, then its last snares doubled; the kick and the backbeat under it |
+| SNARE ROLL EDIT | the break straight, its last four 16ths one snare repeated, building into the next bar |
 
 These are the genre's common forms written on the 16th grid; the names follow the usual names of the patterns
 (STRANJAH's tutorials on YouTube teach them under these names), the grids are this firmware's own versions.
@@ -345,6 +375,9 @@ These are the genre's common forms written on the 16th grid; the names follow th
 - **K1 PUNCH:** the transients, softer or harder.
 - **K2 GRIT:** up to 40 % a sampler's grit in series (12 down to 10 bits, a held rate, a darker top, in the manner
   of old 12-bit samplers); above 40 % the parallel bit crush comes in as well.
+- (0.7) Ahead of the saturation sits a **console EQ**, as the 90s chain ran (EQ → saturation → compression): the
+  lows below ~90 Hz up with PRESSURE (the kick's weight into the drive), 200–500 Hz down with GLUE (the boxiness of
+  a stacked kit), the top above ~4 kHz up with PUNCH.
 - **K3 GLUE:** a fast bus compressor (0.8–4 ms attack, short release, with makeup) that pulls the hits together and
   brings the ghosts, the hats and the room up.
 - **K4 PRESSURE:** saturation into its knee, together with a compensating trim. The kit gets denser, not just louder.

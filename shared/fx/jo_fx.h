@@ -63,7 +63,9 @@ typedef struct {
     /* derived (jf_drum_update, at most once a block) */
     float tr_amt, crush_mix, crush_bits, crush_hold, sat_drive, sat_comp, out_gain;
     float grit, grit_bits, grit_hold, grit_k, room_gain;
+    float eq_lo, eq_box, eq_hi;         /* (0.7) the console EQ before the saturation: weight, the box cut, presence */
     /* state */
+    jo_onepole_t eq_l, eq_b1, eq_b2, eq_h;
     jo_follow_t fast, slow;
     float crush_ph, crush_held, grit_ph, grit_held, grit_lp;
     jf_verb_t room;                     /* active once jf_drum_room_buf gave it its lines */

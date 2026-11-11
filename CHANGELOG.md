@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.0 (unreleased): the bass styles
+## 0.7.0 (unreleased): the bass styles, a new kit, the classic breaks
 
 Not installed on a physical FM-1; the new sounds are not checked by ear.
 
@@ -22,8 +22,24 @@ Abyss Engine
 - docs/research/dnb-bass-styles.md: the archetypes, how each is made and played, with sources.
 - Saved settings from 0.6 load as defaults once (the sounds are new).
 - Tests: every sound (finite, no DC, bounded, top-octave energy, trim within 1.5 dB), the width's mono safety, the
-  styles (in the scale, their sounds and answers); a render of every style (`G_bass_styles`). Abyss's renders change
-  on purpose; Break Surgeon's are unchanged.
+  styles (in the scale, their sounds and answers); a render of every style (`G_bass_styles`).
+
+Break Surgeon
+- **A rebuilt kit:** a kick with a held 56 Hz body, a two-stage pitch drop, asymmetric saturation and a soft 0.25 ms
+  onset; a snare with a clap layer and an air crack over its body and tail; hats from two metal bands and noise,
+  longer and louder.
+- **The bus** gets a console EQ before its saturation; under the synthesized kick the break loses its lows (below
+  ~70 Hz) and ducks up to 3.5 dB.
+- **Six built-in breaks**, synthesized from their rhythms (no recordings): AMEN, THINK, APACHE, FUNKY DRUMMER, HOT
+  PANTS and an original ROLLER; ALGO on the BREAK track's SOUND page picks one (saved). THINK and HOT PANTS are
+  approximate (no written grid found).
+- **Grooves:** 18 now, with LIQUID, NEURO and two jungle edits that re-chop the break (JUNGLE EDIT, SNARE ROLL
+  EDIT); P2 ROLLER uses the classic re-chop.
+- docs/research/dnb-drums.md: how DnB drums are made to sound good, the classic breaks and patterns, with sources.
+- Tests: the drum models (bounded, no DC, the kick's pitch and length, the hats' lengths), the breaks' classes and
+  playback, the new chops; a render of every break (`breaks`).
+
+Both firmwares' renders change on purpose (the new sounds). Tests: 620 checks.
 
 ## 0.6.0 (2026-11-11): routes, DNA, duet, energy, tape decay
 

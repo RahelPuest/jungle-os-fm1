@@ -3,6 +3,9 @@
  * fill types and the phrase-end fill, trig conditions in the engine, RECORD's quantization, ERASE, DENSITY and
  * HUMANIZE, MUTATE on a drum track, TAPE STOP, and undo / redo across them (shared/seq/jo_undo.h, as app.c uses it) */
 #include "../jo_test.h"
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
 #include "../../firmware/break-surgeon/engine/bs_engine.h"
 #include "../../shared/seq/jo_undo.h"
 
@@ -465,8 +468,124 @@ TEST(test_tape_decay)
     CHECK(!(k->s[s1].flags & JS_DECAY)); /* decay off: recordings stay */
 }
 
+/* ------------------------------------------------------------------ (0.7) --- */
+/* the drum models as designed (docs/research/dnb-drums.md): finite, bounded, no DC; the kick's pitch where PITCH
+ * puts it, a transient on top, its length short (the sub's room); the snare's clap layer; the hats long enough to
+ * be heard and louder than 0.6's */
+static float dbuf[44118];
+static uint32_t hit(int model, float vel, int open, float *pk, float *dc, int *finite)
+{
+    jd_voice_t v;
+    jd_sound_t s;
+    uint32_t i, last = 0;
+    *pk = 0.0f; *dc = 0.0f; *finite = 1;
+    memset(dbuf, 0, sizeof dbuf);
+    jd_voice_init(&v, model, 3);
+    jd_sound_default(&s, model);
+    jd_trigger(&v, &s, vel, open);
+    for (i = 0; i < 44096u; i += 64u) jd_render(&v, dbuf + i, 64);
+    for (i = 0; i < 44096u; i++) {
+        float a = fabsf(dbuf[i]);
+        if (!(a == a) || a > 10.0f) *finite = 0;
+        if (a > *pk) *pk = a;
+        *dc += dbuf[i];
+    }
+    for (i = 0; i < 44096u; i++) if (fabsf(dbuf[i]) > *pk * 0.01f) last = i;
+    *dc /= 44096.0f;
+    return last;
+}
+TEST(test_drum_models_07)
+{
+    static const int M[6] = {JD_KICK, JD_SNARE, JD_GHOST, JD_HATS, JD_PERC, JD_IMPACT};
+    float pk, dc, hf = 0.0f, tot = 0.0f;
+    int fin, m;
+    uint32_t len, i, zc = 0;
+    for (m = 0; m < 6; m++) {
+        len = hit(M[m], 1.0f, 0, &pk, &dc, &fin);
+        CHECKF(fin && pk > 0.05f && pk < 1.6f, "model %d peak %f", m, (double)pk);
+        CHECKF(fabsf(dc) < 0.005f, "model %d dc %f", m, (double)dc);
+        (void)len;
+    }
+    /* the kick: about 50-60 Hz at the default PITCH, measured from 40 to 120 ms */
+    len = hit(JD_KICK, 1.0f, 0, &pk, &dc, &fin);
+    for (i = (uint32_t)(0.04f * JO_SR); i < (uint32_t)(0.12f * JO_SR); i++) zc += (dbuf[i - 1] < 0.0f) != (dbuf[i] < 0.0f);
+    CHECKF((float)zc / 2.0f / 0.08f > 45.0f && (float)zc / 2.0f / 0.08f < 65.0f, "kick at %f Hz", (double)((float)zc / 2.0f / 0.08f));
+    CHECKF(len > (uint32_t)(0.08f * JO_SR) && len < (uint32_t)(0.25f * JO_SR), "kick length %u", len);
+    /* its transient: the first 3 ms carry high-frequency energy (the first difference) the body alone has not */
+    for (i = 1; i < (uint32_t)(0.003f * JO_SR); i++) { float d = dbuf[i] - dbuf[i - 1]; hf += d * d; tot += dbuf[i] * dbuf[i]; }
+    CHECKF(hf > 0.02f * tot, "kick transient %f of %f", (double)hf, (double)tot);
+    /* the hats: closed 20-60 ms, open longer; the open one louder than a closed one */
+    len = hit(JD_HATS, 1.0f, 0, &pk, &dc, &fin);
+    CHECKF(len > (uint32_t)(0.02f * JO_SR) && len < (uint32_t)(0.06f * JO_SR), "closed hat %u", len);
+    CHECKF(pk > 0.25f, "closed hat peak %f", (double)pk);
+    i = hit(JD_HATS, 1.0f, 1, &pk, &dc, &fin);
+    CHECKF(i > 2u * len, "open hat %u vs closed %u", i, len);
+    /* the snare with its clap: louder at 7 and 14 ms than a ghost (no clap) shaped the same */
+    len = hit(JD_SNARE, 1.0f, 0, &pk, &dc, &fin);
+    CHECKF(len > (uint32_t)(0.06f * JO_SR) && len < (uint32_t)(0.3f * JO_SR), "snare length %u", len);
+}
+
+/* every built-in break: the right length, its kick and snare slices where its pattern puts them, and its own
+ * name; the selection survives a regeneration and is played by the engine */
+TEST(test_builtin_breaks)
+{
+    uint32_t id, k, nk, ns;
+    for (id = 0; id < JB_NTESTBREAKS; id++) {
+        jb_break_t b;
+        int32_t pk = 0;
+        jb_testbreak_make_n(&b, pcm, 22059u, id);
+        for (k = 0; k < b.frames; k++) if (abs(pcm[k]) > pk) pk = abs(pcm[k]);
+        nk = ns = 0;
+        for (k = 0; k < 16u; k++) nk += b.cls[k] == JB_CLASS_KICK, ns += b.cls[k] == JB_CLASS_SNARE;
+        CHECKF(b.nslices == 16 && b.cls[0] == JB_CLASS_KICK && b.cls[4] == JB_CLASS_SNARE, "break %u classes", id);
+        CHECKF(nk >= 2 && ns >= 2, "break %s: %u kicks %u snares", jb_testbreak_name(id), nk, ns);
+        CHECKF(pk > 6000 && pk < 32767, "break %s peak %d", jb_testbreak_name(id), (int)pk);
+        CHECK(b.frames == jb_testbreak_frames(22059u) && b.bpm == 170.0f);
+        CHECK(strcmp(b.name, jb_testbreak_name(id)) == 0);
+    }
+    CHECK(strcmp(jb_testbreak_name(3), "FUNKY DRUMMER") == 0);
+    start(&E);
+    CHECK(strcmp(bs_step_break(&E, 1), "THINK 170") == 0 && E.test_id == 1);
+    CHECK(strcmp(bs_step_break(&E, -1), "AMEN 170") == 0);
+    bs_set_test_break(&E, 4);
+    CHECK(strcmp(E.breaks[0].name, "HOT PANTS 170") == 0 && !E.brk_busy);
+    bs_cmd_play(&E, 1);
+    go(&E, bar_s());
+    CHECK(n_ev[0][BS_T_BREAK] >= 8u);
+}
+
+/* the new grooves: the jungle edits play their own chops; the break ducks under a synthesized kick and loses its
+ * lows while the kick track plays */
+TEST(test_grooves_07)
+{
+    uint32_t i;
+    start(&E);
+    bs_groove(&E, 16); /* JUNGLE EDIT */
+    CHECK(strcmp(bs_groove_name[16], "JUNGLE EDIT") == 0);
+    for (i = 0; i < 8u; i++) CHECK(E.pat[E.cur_pat].t[BS_T_BREAK].s[i].data == i);
+    CHECK(E.pat[E.cur_pat].t[BS_T_BREAK].s[8].data == 0 && E.pat[E.cur_pat].t[BS_T_BREAK].s[12].data == 12 &&
+          E.pat[E.cur_pat].t[BS_T_BREAK].s[14].data == 12);
+    bs_groove(&E, 17); /* SNARE ROLL EDIT: the last four 16ths one snare, building */
+    for (i = 12; i < 16u; i++) CHECK(E.pat[E.cur_pat].t[BS_T_BREAK].s[i].data == 12);
+    CHECK(E.pat[E.cur_pat].t[BS_T_BREAK].s[15].vel > E.pat[E.cur_pat].t[BS_T_BREAK].s[13].vel);
+    /* the duck: a kick fires, the break's gain drops, then comes back */
+    bs_groove(&E, 0);
+    bs_cmd_play(&E, 1);
+    {
+        float mx = 0.0f;
+        for (i = 0; i < 40u; i++) { go(&E, 0.002f); if (E.brk_duck > mx) mx = E.brk_duck; }
+        CHECKF(mx > 0.2f, "break duck %f", (double)mx);
+    }
+    go(&E, 0.2f);
+    CHECKF(E.brk_duck < 0.05f, "break duck after %f", (double)E.brk_duck);
+    CHECKF(E.brk_lo_cut > 0.5f, "break low cut %f", (double)E.brk_lo_cut);
+}
+
 void run_bs_live(void)
 {
+    RUN(test_drum_models_07);
+    RUN(test_builtin_breaks);
+    RUN(test_grooves_07);
     RUN(test_routes_engine);
     RUN(test_custom_route_latch_undo);
     RUN(test_energy_levels);
