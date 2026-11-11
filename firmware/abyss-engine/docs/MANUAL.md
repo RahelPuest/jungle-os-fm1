@@ -1,190 +1,186 @@
 # The ABYSS ENGINE manual
 
-ABYSS ENGINE is a neuro bass (FM CREATURE, REESE MATRIX) played through a curated graph of sweetspot sounds, with a
-separate clean sub, stabs, an evolving pad, a harmonic sequencer on a shared key, ducking from Break Surgeon's kicks,
-and a bass-safe master. Status: it runs in the simulators and the browser emulator; **it has not been tested on an
-FM-1 yet**.
+ABYSS ENGINE is a bass sequencer: a neuro bass (FM CREATURE, REESE MATRIX) through a curated graph of sweetspot
+sounds, a separate clean sub, stabs and an evolving pad, on three tracks of steps in a shared key. The live tools
+(performance FX, fills, variations, scenes) sit on buttons you hold. Status: it runs in the simulators and the browser
+emulator; **it has not been tested on an FM-1 yet**.
 
-## Quick start: eight moves for a set
+## The one rule
 
-1. **PLAY** starts the bass line (pattern 1, D minor, 174 BPM). With Break Surgeon linked, its PLAY starts this one
-   too.
-2. **K1 MORPH** moves the bass through its sounds, HOLLOW to BROKEN. **ALGO** steps to a neighbouring sweetspot
-   (EXPLORE). **PRESET** jumps back onto the nearest one (SNAP).
-3. **The keys play** the part named on the screen (KEYS PLAY BASS). **SELECT** picks the part: BASS, STAB, PAD.
-4. **ENV** plays a fill: bass rolls and octave jumps up to the next bar. **SEL + ENV** plays a 2-bar fill.
-5. **REC** is RETURN: SNAP, the mutation and the fill ended.
-6. **LFO** mutates the bass sound. **SEL + LFO** undoes it.
-7. **SEL + white 1–8** queues scene 1–8. **SAVE + white 1–8** stores the current state there.
-8. **SEL + REC** holds the pad chord (PAD HOLD) and releases it again.
+**Tap a button: a page. Hold a button: a layer, while you hold it. Let go: back, always safe.**
 
-And one more: **SEL + SEQ** turns on CALL & RESPONSE, a 4-bar bass form A B A C (see CALL & RESPONSE below).
+On every page the 16 white keys are the 16 steps of the selected track, and black keys 1–3 pick the track: BASS,
+STAB, PAD. The screen's strip shows, at all times, what the encoders and every run of keys do, and names the held
+layer.
 
-You don't have to remember any of this: the screen shows, on every page, what each key and each encoder does.
+## Quick start
 
-The same buttons do the same things on BREAK SURGEON: PLAY, REC (RETURN), ENV (FILL), LFO (MUTATE, SEL + LFO undo),
-SEL + white (scenes), SAVE + white (store a scene), SEL + black (mute), SEL + PLAY (panic).
+1. **PLAY.** Pattern 1 plays: a bass line in D minor at 174 BPM.
+2. **Tap a white key:** a step on or off. **Hold it and turn K1:** its note.
+3. **ALGO:** the library: a new bass line (ROLLING, OFFBEAT, NEURO STABS, HALF-TIME, REESE LONG, TWO-STEP, ACID,
+   WOBBLE 8THS), in the key. On STAB and PAD, chord rhythms. SEL + LFO undoes it.
+4. **K1 CHAR** moves the bass through its sounds (HOLLOW to BROKEN). K2 MOTION, K3 BITE, K4 GLIDE.
+5. **Hold FX and a white key:** a performance FX while you hold (OCT UP, FILTER DIVE, TAPE STOP …).
+6. **Tap ENV:** a fill in the last bar of the phrase. **Hold ENV + white 1–4:** a fill from the next bar.
+7. **Hold LFO + white 9 to 14:** a FORM: the bass answers itself, A B A C.
+8. **Tap REC** and play the keys: they are recorded into the track. Tap REC again to stop.
+
+The same buttons do the same on BREAK SURGEON.
 
 ## The screen
 
-![PERFORM: the bass node SNARL on the sweetspot path, the strip, MORPH MOTION BITE SPACE](img/perform.png "PERFORM: the bass node SNARL on the sweetspot path")
+![HOME: the BASS track's 16 steps big, with their notes; all three tracks as mini rows below](img/perform.png "HOME")
 
-From top to bottom:
+- **The header:** the page (or the held layer, or REC in red), the tempo (LINK: following Break Surgeon), the
+  pattern and the variation playing (P1 A), and the bar of the phrase (BAR 2/4). A bar along its bottom fills up
+  while a pattern or a scene waits to land.
+- **The page.** HOME shows the selected track's 16 steps big: a lit box is a step, its bar the velocity; on BASS
+  the note is written in it. Marks: a red corner = a trig condition, a blue one = a lock, a grey dot = a probability,
+  a white line = slide. Below, every track as a mini row.
+- **The strip:** what SELECT, ALGO and PRESET do, and what each run of keys does.
+- **The four knob boxes.**
 
-- **The header:** the page, the tempo (LINK: following Break Surgeon), the key and the load. A white bar along its
-  bottom edge fills up while a pattern or a scene waits for its bar.
-- **The page.**
-- **The strip:** what SELECT, ALGO and PRESET do on this page, then a picture of the 27 keys with what each run of
-  keys does. **Hold SEL** (the emulator's panel draws it SCL) or **SAVE**, and the strip shows what they do with
-  it; with SEL held, the bottom of the page lists the SEL button combinations.
-- **The four K-knob boxes.**
+![A held step: its popup with the note, velocity, condition and octave](img/step.png "A held step")
 
-![PERFORM with SEL held: the SEL combinations over the page, the strip showing QUEUE SCENE 1-8 and MUTE B S P](img/sel.png "SEL held")
+## Steps and tracks (every page)
 
-## Buttons (every page)
+| Control | Does |
+|---|---|
+| white key, tap | the step on / off |
+| white key, hold | edit the step: a popup shows its values |
+| hold + K1 / K2 / K3 / K4 | NOTE (BASS: scale steps; STAB, PAD: the chord degree) / VELOCITY / a CHARACTER lock / a BITE lock |
+| hold + ALGO | the TRIG CONDITION: ALWAYS, 1:2, 2:2, 1:4, 2:4, 3:4, 4:4, FILL, NO FILL, PHRASE 1ST, PHRASE END |
+| hold + PRESET | the step's octave (−2 … +2) |
+| hold + black 4 / 5 | ACCENT / SLIDE (legato into the note) |
+| black 1–3, SELECT | the track: BASS, STAB, PAD |
+| ALGO | the library (above) |
+| PRESET | the pattern P1–P4, at the next bar (or the phrase's end, QUANT = PHRASE) |
+| OCT− / OCT+ | steps 1–16 / 17–32 of a longer track |
 
-| Button | Tap | With SEL held |
+Trig conditions count bars on the global grid, so a 1:4 step lands in the same bar on both FM-1s. FILL steps play
+only under a fill: put a few extra notes there and every fill brings them.
+
+## The buttons
+
+| Button | Tap | Hold: the layer |
 |---|---|---|
-| HOME / SEQ / EDIT / FX / ARP / GLO | PERFORM / SEQUENCE / SOUND / FX / SCENE / SYSTEM | |
-| PLAY | start / stop (with FOLLOW = LINK, Break Surgeon's transport starts and stops it too) | **PANIC**: all notes off, stop |
-| REC | **RETURN**: SNAP to the nearest sweetspot, the mutation and the explore left, the fill ended | **PAD HOLD** on / off (the pad holds the current chord; off lets the tails ring out) |
-| ENV | **FILL**: the bass's rolls and octave jumps up to the next bar | a 2-bar fill |
-| LFO | **MUTATE** the bass sound (radius: SEQUENCE K3) | **UNDO** the last mutation |
-| SAVE | save (refused while playing) | |
-| SEQ | the SEQUENCE page | **CALL & RESPONSE** on / off (and the SEQUENCE page) |
-| OCT− / OCT+ | keyboard octave (−2..+2) | |
+| HOME | HOME (the steps) | — |
+| SEQ | SEQUENCE: the three tracks, lengths, mutes | — |
+| EDIT | SOUND: the track's sound in depth; the keys play it | — |
+| FX | FX: NEURO PRESSURE | **FX:** white 1–8 = OCT UP, OCT DOWN, FILTER DIVE, WOBBLE, STUTTER, TAPE STOP, BITE MAX, SUB ONLY, while held. K1–K4: WEIGHT, DIRT, WIDTH, PRESSURE |
+| ARP | SONG: form, phrase, link helpers | **SONG:** white 1–8 = queue scene 1–8, white 9–12 = queue P1–P4, black 1–3 = mute / unmute BASS, STAB, PAD |
+| GLO | SYSTEM | — |
+| ENV | a fill in the phrase's last bar | **FILL:** white 1–4 = ROLLS, OCTAVES, DROP OUT, SLIDE DOWN from the next bar; K1 = 1 or 2 bars |
+| LFO | MUTATE the bass sound | **VARY:** white 1–4 = variation A–D from the next bar; white 9–14 = FORM OFF, A B A C, A A A B, A B A B, A B C D, A A B B; ALGO = the variation's LINE; K1 DENSITY, K2 HUMANIZE, K3 MUTATE amount, K4 the variation's SOUND |
+| REC | RECORD on / off | **ERASE:** white = clear the step, black 1–3 = clear the track |
+| SAVE | save | **STORE:** white 1–8 = store the state as scene 1–8 |
+| SEL | — | **SEL:** SEL + LFO = UNDO, SEL + ENV = REDO, SEL + PLAY = PANIC, SEL + REC = RETURN (SNAP, back to the scene), SEL + SELECT = tempo, SEL + knob = fine |
+| PLAY | start / stop | |
 
-**On every page:** SEL + white 1–8 queues scene 1–8; SAVE + white 1–8 stores the current state as scene 1–8;
-SEL + black 1–3 mutes or unmutes BASS, STAB, PAD.
+A hold is a hold after you use it, or after 1.5 s; a short press without anything else is a tap.
 
-## The encoders
+![SEL held: its combinations](img/sel.png "SEL held")
 
-| Page | SELECT | ALGO | PRESET |
-|---|---|---|---|
-| PERFORM | the part the keys play: BASS, STAB, PAD (SEL + SELECT: tempo) | **EXPLORE**: the next / previous neighbour of the nearest node (this reaches REESE and REESE DARK; a model change crossfades) | **SNAP**: MORPH onto the nearest node, mutation cleared |
-| SEQUENCE | the track (SEL + SELECT: tempo) | a held step's octave lock (−2..+2) | the pattern, at the next bar |
-| SOUND | the part (SEL + SELECT: tempo) | the chord type, or on STAB the stab model | the root; SEL + PRESET: the scale |
-| FX | tempo | — | the output trim |
-| SCENE, SYSTEM | tempo | — | SYSTEM: the USB port as a host |
+### FX: performance FX
 
-## The keyboard
+![FX held, FILTER DIVE on white 3](img/layer_fx.png "FX held")
 
-On PERFORM, SOUND, FX and SYSTEM every key, white and black, plays the part on the screen, with velocity. BASS
-starts at F1 on the lowest key (bass and sub together, legato when keys overlap). STAB plays a chord on each key
-(the chord type and tension of the SOUND page). PAD plays a held chord on the key. The root's keys glow dimly.
+Each FX plays while its key is down and ends when you let go. OCT UP / OCT DOWN move the bass an octave. FILTER DIVE
+closes the bass's low-pass five octaves over a bar. WOBBLE turns the bass's LFO to full at 1/8. STUTTER repeats the
+note under it in 32nds. TAPE STOP slows the bass and sub two octaves down to silence over 0.6 s. BITE MAX is BITE
+at full. SUB ONLY mutes the mid bass and leaves the sub.
 
-## PERFORM (HOME)
+### SONG and STORE: scenes, patterns, mutes
 
-The screen shows the nearest sweetspot (and MUTATED, EXPLORING, FILL), the MORPH path with its nodes, which part the
-keys play and the octave, PAD state, the scene, the duck and output meters, and LINK or SOLO.
+![SONG held: the scenes, the patterns, the mutes](img/layer_song.png "SONG held")
 
-| Control | Does |
-|---|---|
-| K1 MORPH | along the path HOLLOW → RUBBER → TALK → GROWL → SNARL → METALLIC → LASER → BROKEN, every parameter at once, trimmed for loudness |
-| K2 MOTION | the groove LFO's depth and how many destinations follow it (index, cutoff, vowel) |
-| K3 BITE | drive, brightness, fold and formant together, with a compensating trim |
-| K4 SPACE | the delay/reverb send of stabs and pad (the bass and sub stay dry) |
+A scene holds the pattern, the mutes, PAD HOLD, the bass's CHARACTER / MOTION / BITE and SPACE, NEURO PRESSURE, the
+root and the scale. Hold SAVE and press white 1–8 to store one.
 
-## SEQUENCE (SEQ)
+### FILL
 
-![SEQUENCE: the bass, stab and pad tracks; a held step's locks below](img/seq.png "SEQUENCE: the bass, stab and pad tracks; a held step's locks below")
+![FILL held: the four fills and the length](img/layer_fill.png "FILL held")
 
-Three tracks, 16 steps shown: BASS, STAB, PAD (MUTED in red when muted). Lit steps on the white keys.
+ROLLS: the bass rolls in the bar's second half, with octave jumps. OCTAVES: every second 8th an octave up. DROP OUT:
+the bass and sub silent. SLIDE DOWN: every note slides down the scale. A tap of ENV plays the last chosen fill in the
+phrase's last bar (or bars, at 2 bars).
 
-| Control | Does |
-|---|---|
-| white (tap) | step on / off |
-| white (hold) + K1 | the note: BASS in scale steps around the root; STAB and PAD the chord's scale degree |
-| white (hold) + K2 / K3 / K4 | VELOCITY / a MORPH lock / a BITE lock (BASS) |
-| white (hold) + ALGO | an octave lock (−2..+2) |
-| white (hold) + black 4 / black 5 | ACCENT / SLIDE (legato glide into this note) |
-| black 1..3, SELECT | the track |
-| black 11 | mute the track |
-| PRESET | the next / previous pattern, at the next bar |
-| K1..K4 (no step held) | LENGTH (1–32; steps 17–32 are not editable on this page yet), SWING, MUTATE RADIUS, SPEED (1/16, 1/32, 1/8) |
+### VARY: variations and the FORM
 
-## CALL & RESPONSE
+![VARY held: A–D with their lines and sounds, the FORM list](img/layer_vary.png "VARY held")
 
-![SEQUENCE with CALL & RESPONSE on: the form A B A C, the third bar playing; B is A's line as REESE, C is P2's line as LASER](img/call_response.png "CALL & RESPONSE on the SEQUENCE page")
+The bass has four variations. **A** is the bass as it is: the pattern's line and the knobs' sound. **B, C, D**
+answer it, each with a **LINE** (A's, or the bass line of P1–P4) and a **SOUND** (A's, or one of the ten sweetspots,
+REESE and REESE DARK included). Defaults: B = A's line as REESE, C = P2's line as LASER, D = P3's line as GROWL.
 
-The bass plays a 4-bar form, **A B A C**: a call, an answer, the call again, a second answer that turns the phrase
-round. **SEL + SEQ** turns it on and off, from any page; it runs on the 4-bar grid, so it stays in step with
-scenes and with Break Surgeon.
+The **FORM** plays them bar by bar on the 4-bar grid: A B A C is the call and two answers (0.4's CALL &
+RESPONSE), A A A B a switch-up in the fourth bar, A B A B, A B C D, A A B B. FORM OFF plays the variation you picked
+last (white 1–4). Each part takes its sound from its first note on; the sub plays every part's notes.
 
-- **A** is the bass as it is: the pattern's bass line and the sound of the knobs (MORPH, EXPLORE, MUTATE, the
-  locks). Change the pattern and A changes.
-- **B** and **C** answer it. Each has its own **line** (A's, or the bass line of pattern P1–P4) and its own
-  **sound** (A's, or one of the ten sweetspots, REESE and REESE DARK included). Each new part takes its sound from
-  its first note on. The sub plays every part's notes, clean as always.
-- The defaults: B plays A's line as REESE (the same notes in another voice); C plays P2's line as LASER.
+DENSITY makes the selected track denser or emptier one step a click (the offbeat 16ths come and go first, the
+downbeat last). HUMANIZE adds small fixed velocity and timing offsets as it plays. Both are undone like any edit.
 
-On the SEQUENCE page, with CALL & RESPONSE on, the bottom of the page shows the form with the bar playing lit,
-and B's and C's line and sound. The knobs set them (when no step is held):
+### REC and ERASE
 
-| Knob | Does |
-|---|---|
-| K1 B LINE | A, P1, P2, P3, P4 |
-| K2 B SOUND | A, or a sweetspot: HOLLOW … BROKEN, REESE, REESE DARK |
-| K3 C LINE | as K1 |
-| K4 C SOUND | as K2 |
+![REC: the keys play and write the bass](img/rec.png "REC")
 
-Ideas:
-- A call in one sound, the answer in another on the same notes: B LINE A, B SOUND a contrasting node (REESE
-  against FM growls).
-- A sparse call and a busy answer: A on P3 (two notes a bar), C on P2.
-- A gap as the answer: a line from a pattern with no bass (P4 by default) leaves the bar to the drums.
+With REC on, the keys play the selected track and write each note into its nearest step: BASS the note, STAB and PAD
+the nearest chord degree, with the velocity. OCT− / OCT+ then move the keyboard. A whole record pass is one UNDO.
+Hold REC to erase steps or a track.
 
-LENGTH, SWING, MUTATE RADIUS and SPEED are on the knobs again when CALL & RESPONSE is off. Its settings are saved
-with SAVE. PERFORM shows C&R A, B or C while it runs.
+## The pages
 
-## SOUND (EDIT)
+### SEQUENCE (SEQ)
 
-![SOUND on the STAB voice: RAVE CHORD, key D minor](img/sound.png "SOUND on the STAB voice: RAVE CHORD, key D minor")
+![SEQUENCE: the three tracks, their lengths and speeds](img/seq.png "SEQUENCE")
 
-The part SELECT picks (the same one the keys play). PRESET: the root. SEL + PRESET: the scale (MINOR, HARM MIN,
-PHRYGIAN, DORIAN, CHROMA). ALGO: the chord type (MIN, MIN7, SUS2, MIN9, MAJ7, DIM, CLUSTER, FIFTH), or on STAB the
-stab model (RAVE CHORD, ORCH HIT, GLASS FM, DARK CHORD).
+All three tracks with their LEN and SPEED, MUTED in red. K1 LENGTH (1–32), K2 SWING, K3 SPEED (1/16, 1/32, 1/8),
+K4 SPACE (the delay / reverb send of stabs and pad).
 
-| Part | K1 | K2 | K3 | K4 |
+### SOUND (EDIT)
+
+![SOUND on BASS: the patch as the graph sets it now](img/sound.png "SOUND")
+
+The keys play the track here without recording. ALGO: the chord type (BASS, PAD) or the stab model (STAB). PRESET:
+the root; SEL + PRESET: the scale.
+
+| Track | K1 | K2 | K3 | K4 |
 |---|---|---|---|---|
-| BASS | MOD SHAPE (SINE, EXP, PULSE, ASYM, STEP) | SUB SAT | SUB OCT (−1 / 0) | TENSION (adds 9 / b9 to chords) |
-| STAB | CHORD / TENSION | ATTACK | BITE | TAIL |
-| PAD | DARKNESS | EVOLVE | TENSION | DEPTH |
+| BASS | MOD SHAPE | SUB SAT | SUB OCT (−1 / 0) | TENSION |
+| STAB | SPACE | TENSION | INVERSION | — |
+| PAD | SPACE | TENSION | ATTACK | RELEASE |
 
-The BASS screen shows all the bass's parameters as the graph sets them now.
+On HOME the knobs are each track's four main controls: BASS CHAR (the sweetspot path), MOTION, BITE, GLIDE; STAB
+CHORD, ATTACK, BITE, TAIL; PAD DARKNESS, EVOLVE, TENSION, DEPTH.
 
-## FX (NEURO PRESSURE)
+### FX (NEURO PRESSURE)
 
 ![FX: NEURO PRESSURE](img/fx.png "FX: NEURO PRESSURE")
 
-- **K1 WEIGHT:** the sub's level.
-- **K2 DIRT:** the drive of the bass above 115 Hz.
-- **K3 WIDTH:** the stereo of pads and stabs above 140 Hz, never the sub.
-- **K4 PRESSURE:** glue and density with a compensating trim.
+K1 WEIGHT (the sub's level), K2 DIRT (the drive above 115 Hz), K3 WIDTH (pads and stabs above 140 Hz, never the
+sub), K4 PRESSURE (glue and density with a compensating trim). PRESET: the output trim.
 
-PRESET: the output trim. The screen shows the peak, the glue's reduction and the guard's catches.
+### SONG (ARP)
 
-## SCENE (ARP)
+![SONG: the FORM, the variations, the phrase and the link helpers](img/song.png "SONG")
 
-white 1..8 queue, SAVE + white store (both work on every page too, with SEL and SAVE). The knobs:
+ALGO: the FORM. K1 PHRASE (4, 8, 16 bars: the header's BAR count, the fills' and PHRASE END's grid). K2 QUANT: when
+scenes land (NOW, BEAT, BAR, 2 BAR, 4 BAR, PHRASE; PHRASE also lands patterns and variations at the phrase's end).
+K3 **LOCK TO KICK**: with Break Surgeon linked, the bass plays on its kicks, the line giving the notes. K4 **FILL
+ANSWERS**: a fill from Break Surgeon makes its bars play variation C.
 
-- **K1 QUANT.**
-- **K2 DUCK:** how deep the kick ducking goes.
-- **K3 SOLO DUCK:** duck on every beat when no link is heard.
-- **K4 FOLLOW:** LINK follows the link's clock, transport, scenes and fills; OFF ignores them.
+### SYSTEM (GLO)
 
-A scene holds the pattern, the mutes, PAD HOLD, MORPH / MOTION / BITE / SPACE, NEURO PRESSURE, the root and the
-scale.
+![SYSTEM: clock, link, store](img/system.png "SYSTEM")
 
-## SYSTEM (GLO)
-
-![SYSTEM: clock, link, load](img/system.png "SYSTEM: clock, link, load")
-
-- **K1 BPM.**
-- **K2 VOICES:** FULL, NO PAD, BASS ONLY, to drop parts when the load is too high.
-- **K3 LINK CH.**
-- **K4 FOLLOW.**
-
-PRESET: the USB port as a host (unverified with another FM-1). The page shows the load and dropouts, the link and
-the kicks received, the store, the USB mode, and how many sweetspots are still unreviewed. None is certified by
+K1 BPM, K2 VOICES (FULL, NO PAD, BASS ONLY, to drop parts under load), K3 LINK CH, K4 FOLLOW (LINK: the link's
+clock, transport, scenes and fills). SELECT: DUCK (how deep Break Surgeon's kicks duck the sub); ALGO: SOLO DUCK
+(duck on every beat when no link is heard); PRESET: the USB port as a host (unverified with another FM-1). The page
+shows the load, the link, the store, the USB mode and how many sweetspots are still unreviewed: none is certified by
 listening yet ([docs/development/sweetspots.md](https://github.com/RahelPuest/jungle-os-fm1/blob/main/docs/development/sweetspots.md)).
+
+## Saving
+
+SAVE saves the settings, the four patterns and the scenes (not while playing: a flash write stalls the sound). It
+also happens by itself 3 s after STOP when something changed. 0.5 changed the stored formats: settings and patterns
+saved by 0.4 load as the defaults once.

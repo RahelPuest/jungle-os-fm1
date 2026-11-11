@@ -22,10 +22,29 @@ extern const char *const ab_track_name[AB_NTRACKS];
 enum { AB_LK_MORPH, AB_LK_BITE, AB_LK_MOTION, AB_LK_OCT, AB_NLOCKS }; /* bass-step locks */
 enum { AB_VOICE_FULL, AB_VOICE_NO_PAD, AB_VOICE_BASS_ONLY };         /* voice budget modes (CPU degradation) */
 
-/* (0.4) CALL & RESPONSE: the bass plays a 4-bar form, A B A C (AB_CR_FORM), on the 4-bar grid. A is the bass as it
- * is (the pattern's line, MORPH / EXPLORE / MUTATE); B and C answer it, each with its own line and sound */
+/* (0.4) CALL & RESPONSE, (0.5) VARIATIONS and FORM: four variations of the bass, A B C D. A is the bass as it is
+ * (the pattern's line, MORPH / EXPLORE / MUTATE); B, C and D answer it, each with its own line and sound. The FORM
+ * plays them bar by bar on the 4-bar grid (OFF: the variation picked, var_sel); CALL & RESPONSE is FORM A B A C */
 #define AB_CR_BARS 4
+#define AB_NVAR 4
+enum { AB_FORM_OFF, AB_FORM_ABAC, AB_FORM_AAAB, AB_FORM_ABAB, AB_FORM_ABCD, AB_FORM_AABB, AB_NFORMS };
+extern const char *const ab_form_name[AB_NFORMS];
+extern const uint8_t AB_FORMS[AB_NFORMS][AB_CR_BARS];
 extern const uint8_t AB_CR_FORM[AB_CR_BARS];      /* {0, 1, 0, 2}: A B A C */
+/* (0.5) the performance FX (held; AB_FX_NONE when none) */
+enum { AB_FX_NONE, AB_FX_OCT_UP, AB_FX_OCT_DOWN, AB_FX_DIVE, AB_FX_WOBBLE, AB_FX_STUTTER, AB_FX_TAPE, AB_FX_BITE,
+       AB_FX_SUB_ONLY, AB_NFX };
+extern const char *const ab_fx_name[AB_NFX];
+/* (0.5) the fills: ROLLS (the bass rolls, octave jumps on the rolls), OCTAVES, DROP OUT (the bass and sub silent),
+ * SLIDE DOWN (every note slides down the scale) */
+enum { AB_FILL_ROLLS, AB_FILL_OCTAVES, AB_FILL_DROP, AB_FILL_SLIDE, AB_NFILLS };
+extern const char *const ab_fill_name[AB_NFILLS];
+/* (0.5) the library: bass lines (scale-aware) and chord rhythms for STAB and PAD */
+#define AB_NLINES 8
+#define AB_NRHYTHMS 5
+extern const char *const ab_line_name[AB_NLINES];
+extern const char *const ab_stab_rhythm_name[AB_NRHYTHMS];
+extern const char *const ab_pad_rhythm_name[AB_NRHYTHMS];
 typedef struct {
     int8_t line;   /* the pattern whose bass line plays (0..AB_NPATTERNS-1), -1: A's line */
     int8_t node;   /* the sweetspot node it sounds as, -1: A's sound */
@@ -79,9 +98,29 @@ typedef struct {
     ab_scene_t scene[AB_NSCENES];
     uint8_t fill_on;
     uint32_t fill_end;
-    uint8_t cr_on;                     /* CALL & RESPONSE (written by the main loop, read by the render) */
-    uint8_t cr_play;                   /* the part of the form sounding: 0 A, 1 B, 2 C (the render's) */
-    ab_resp_t cr[2];                   /* B and C */
+    uint8_t cr_on;                     /* a FORM plays (form != AB_FORM_OFF; kept for 0.4's callers) */
+    uint8_t cr_play;                   /* the variation sounding: 0 A .. 3 D (the render's) */
+    ab_resp_t cr[AB_NVAR - 1];         /* B, C and D */
+    uint8_t form;                      /* AB_FORM_* (main loop writes, render reads) */
+    uint8_t var_sel, var_next;         /* FORM OFF: the variation playing, and the one queued for var_at */
+    uint32_t var_at;
+    /* (0.5) fills: the type, from fill_start to fill_end (16ths); seq.fill follows */
+    uint8_t fill_type;
+    uint32_t fill_start;
+    /* (0.5) link helpers: LOCK TO KICK (the bass plays on the link's kicks), FILL ANSWERS (a link fill's bars play
+     * variation C) */
+    uint8_t lock_kick, fill_answers, answer_on;
+    uint32_t answer_start, answer_end;
+    uint8_t phrase;                    /* 4, 8, 16 bars */
+    uint8_t quant;                     /* patterns and variations: 0 next bar, 1 the phrase's end */
+    /* (0.5) the performance FX */
+    uint8_t perf, perf_was;
+    uint32_t perf_n;                   /* samples since the FX began */
+    uint8_t stutter_have;
+    js_step_t stutter_step;
+    float tape_bass, tape_sub, tape_gain;
+    float glide_amt;                   /* GLIDE: 0.5 = the node's glide */
+    float humanize;                    /* HUMANIZE 0..1: velocity and microtiming offsets in the playback */
     float energy;
     /* master */
     jf_neuro_t master;
@@ -135,4 +174,24 @@ void ab_default_patterns(ab_engine_t *e);
 const char *ab_node_name(const ab_engine_t *e);  /* the nearest node's name */
 /* CALL & RESPONSE: the part of the form (0 A, 1 B, 2 C) that 16th abs plays */
 int ab_cr_part(const ab_engine_t *e, uint32_t abs);
-void ab_set_cr(ab_engine_t *e, int on);
+void ab_set_cr(ab_engine_t *e, int on);          /* FORM A B A C on, or FORM OFF */
+/* (0.5) */
+void ab_set_form(ab_engine_t *e, int form);
+void ab_cmd_variation(ab_engine_t *e, int v);    /* FORM OFF, variation v from the next bar (or the phrase's end) */
+/* a fill of type t, bars 1 / 2; at_phrase_end: in the phrase's last bar(s), else from the next bar */
+void ab_cmd_fill_type(ab_engine_t *e, int t, int bars, int at_phrase_end);
+void ab_set_perf(ab_engine_t *e, int fx);        /* AB_FX_NONE ends it */
+void ab_set_phrase(ab_engine_t *e, int bars);
+/* the library: line l into the BASS track of the current pattern, or a rhythm r into STAB / PAD */
+void ab_load_line(ab_engine_t *e, int l);
+void ab_load_rhythm(ab_engine_t *e, int track, int r);
+/* DENSITY: one step more (dir > 0) or less on a track of the current pattern, by a fixed ranking (the downbeat goes
+ * last, offbeat 16ths first); returns 1 if a step changed */
+int ab_density(ab_engine_t *e, int track, int dir);
+/* REC: a note (BASS: MIDI note; STAB / PAD: MIDI note, written as the nearest scale degree) into the track's step
+ * nearest to now, quantized; returns the step written or -1 (stopped) */
+int ab_record(ab_engine_t *e, int track, int note, float vel);
+/* the sound state UNDO saves with a pattern (shared/seq/jo_undo.h's extra blob: 62 bytes) */
+typedef struct { float v[JN_NPARAMS]; int8_t explore; uint8_t mutated; } ab_sound_state_t;
+void ab_sound_get(const ab_engine_t *e, ab_sound_state_t *s);
+void ab_sound_set(ab_engine_t *e, const ab_sound_state_t *s);
