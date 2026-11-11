@@ -191,6 +191,7 @@ static void apply_settings(void)
     bs_set_phrase(&eng, set.phrase);
     eng.form = set.form % BS_NFORMS;
     decay_apply();
+    if (!eng.has_bank && set.rsv % JB_NTESTBREAKS != eng.test_id) bs_set_test_break(&eng, set.rsv % JB_NTESTBREAKS);
 }
 
 static void load_all(void)
@@ -229,6 +230,7 @@ static void store_settings_from_engine(void)
     set.slices = eng.slices;
     set.phrase = eng.phrase;
     set.form = eng.form;
+    set.rsv = eng.test_id; /* (0.7) the built-in break */
 }
 
 /* SAVE: every object; while playing it is refused, since a flash write stalls the audio (plat.h) */
@@ -273,7 +275,7 @@ static void bank_detach(void)
     uint32_t f = plat_lock();
     jb_release(&eng.player);
     eng.player.v[0].active = eng.player.v[1].active = 0;
-    jb_testbreak_make(&eng.breaks[0], test_pcm, 22059u);
+    jb_testbreak_make_n(&eng.breaks[0], test_pcm, 22059u, eng.test_id);
     eng.nbreaks = 1;
     eng.cur_break = 0;
     eng.has_bank = 0;
@@ -290,7 +292,7 @@ static int bank_attach(void)
     f = plat_lock();
     n = bs_load_bank(&eng, img, BS_BANK_HI - BS_BANK_LO);
     if (n <= 0) {
-        jb_testbreak_make(&eng.breaks[0], test_pcm, 22059u);
+        jb_testbreak_make_n(&eng.breaks[0], test_pcm, 22059u, eng.test_id);
         eng.nbreaks = 1;
         eng.player.brk = &eng.breaks[0];
     } else if (eng.slices != eng.breaks[0].nslices && !eng.breaks[0].cls[0])
@@ -853,6 +855,9 @@ static void input(void)
             static const char *const PV[JD_PERC_NVAR] = {"TOM", "RIM", "SHAKER", "CLICK"};
             eng.snd[BS_T_PERC].variant = (uint8_t)((eng.snd[BS_T_PERC].variant + (d > 0 ? 1u : JD_PERC_NVAR - 1u)) % JD_PERC_NVAR);
             app_say("PERC VOICE", PV[eng.snd[BS_T_PERC].variant]);
+        } else if (ui.page == PG_SOUND && ui.track == BS_T_BREAK) { /* (0.7) the break: the built-in ones or a bank's */
+            app_say("BREAK", bs_step_break(&eng, d));
+            dirty = 1;
         } else if (ui.page == PG_SOUND) {
             app_say("KIT", bs_kit_step(&eng, d));
         } else if (ui.page == PG_FX) {
@@ -1281,7 +1286,8 @@ static void draw_body(void)
             ui_fit(6, 30, 234 - (6), &FONT_B, b->name, C_AMB);
             t[0] = 0; ui_int(t, (int32_t)b->nslices); ui_cat(t, " SLICES  ");
             { char v[12]; ui_fix1(v, b->bpm); ui_cat(t, v); } ui_cat(t, " BPM  ");
-            ui_cat(t, eng.has_bank ? "BANK" : "TEST BREAK");
+            if (eng.has_bank) ui_cat(t, "BANK");
+            else { char v[8]; ui_cat(t, "BUILT-IN "); ui_int(v, eng.test_id + 1); ui_cat(t, v); ui_cat(t, "/6"); }
             ui_fit(6, 47, 234 - (6), &FONT_S, t, C_GRAY);
             /* the waveform, slice marks over it */
             for (i = 0; i < 228u; i++) {
@@ -1390,7 +1396,7 @@ static void draw_strip(void)
         }
         if (ui.page == PG_SOUND) {
             g[n++] = (ui_kg_t)UI_W(0, 15, ui.track == BS_T_BREAK ? "PLAY SLICES 1-16" : "PLAY IT: SOFT (LEFT) TO HARD (RIGHT)");
-            enc[1] = ui.track == BS_T_PERC ? "VOICE" : "KIT NODE";
+            enc[1] = ui.track == BS_T_PERC ? "VOICE" : ui.track == BS_T_BREAK ? "BREAK" : "KIT NODE";
         } else if (ui.rec)
             g[n++] = (ui_kg_t)UI_W(0, 15, ui.track == BS_T_BREAK ? "RECORD: PLAY SLICES 1-16" : "RECORD: SOFT (LEFT) TO HARD");
         else

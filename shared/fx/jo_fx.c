@@ -136,6 +136,12 @@ void jf_drum_update(jf_drum_bus_t *b)
     /* the makeup: what a -6 dBFS hit loses, given back (the bodies keep their level, the peaks run into the clip) */
     b->comp.makeup_db = 0.9f * jo_maxf(-6.0f - b->comp.thresh_db, 0.0f) * (1.0f - 1.0f / b->comp.ratio);
     b->out_gain = jo_db2lin(m->trim_db - 1.0f * pr); /* the denser it gets, the less level: loudness held */
+    /* (0.7) the console EQ ahead of the saturation, as the 90s chain ran (EQ -> saturation -> compression): below
+     * ~90 Hz up 1.5-4 dB with PRESSURE (the kick's weight into the drive), 200-500 Hz down 1.5-3 dB (the boxiness
+     * of a stacked kit), above ~4 kHz up 1-3.5 dB with PUNCH (crack and air) */
+    b->eq_lo = jo_db2lin(1.5f + 2.5f * pr) - 1.0f;
+    b->eq_box = 1.0f - jo_db2lin(-1.5f - 1.5f * gl);
+    b->eq_hi = jo_db2lin(1.0f + 2.5f * jo_clampf(m->punch, 0.0f, 1.0f)) - 1.0f;
     b->fast.env = b->fast.env;
 }
 
@@ -180,6 +186,13 @@ void jf_drum_process(jf_drum_bus_t *b, float *x, const float *send, uint32_t n)
                 b->crush_held = jo_floorf(s * b->crush_bits + 0.5f) / b->crush_bits;
             }
             s += (jo_tanh(b->crush_held * 2.0f) * 0.5f - s * 0.5f) * b->crush_mix;
+        }
+        /* (0.7) the console EQ: one-pole splits (90 Hz, 200-500 Hz, 4 kHz), cheap and phase-gentle */
+        {
+            float lo = jo_lp1(&b->eq_l, s, 0.0127f);                      /* ~90 Hz */
+            float box = jo_lp1(&b->eq_b1, s, 0.069f) - jo_lp1(&b->eq_b2, s, 0.0281f); /* ~500 minus ~200 Hz */
+            float hi = s - jo_lp1(&b->eq_h, s, 0.435f);                   /* ~4 kHz up */
+            s += lo * b->eq_lo - box * b->eq_box + hi * b->eq_hi;
         }
         /* saturation */
         s = jo_tanh(s * b->sat_drive * 0.5f) * b->sat_comp * 2.0f;

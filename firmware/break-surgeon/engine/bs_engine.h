@@ -101,6 +101,12 @@ typedef struct {
     jf_drum_bus_t bus;
     float bus_buf[BS_BLOCK_MAX];
     float send_buf[BS_BLOCK_MAX], tmp_buf[BS_BLOCK_MAX]; /* the room's send; one voice at a time */
+    /* (0.7) the break under programmed drums: its low cut (eased in while the synthesized kick plays) and its duck
+     * under each synthesized kick */
+    jo_onepole_t brk_lp;
+    float brk_lo_cut, brk_duck;
+    uint8_t test_id, brk_busy;           /* (0.7) the built-in break (JB_NTESTBREAKS), its regeneration */
+#define BS_BREAK_DUCK 0.33f /* -3.5 dB under a full kick */
     /* link (sender) */
     jl_link_t link;
     void (*midi_out)(uint32_t pkt);    /* the app's: plat_midi_send to the link's ports; 0 = none */
@@ -158,7 +164,7 @@ int bs_undo(bs_engine_t *e);                                 /* 0 = restored */
 /* (0.4) the groove library: the classic drum & bass patterns, loaded into the current pattern's BREAK, KICK, SNARE,
  * GHOST and HATS tracks (PERC and IMPACT kept); the break re-chopped to the groove by its slices' classes.
  * Undone by bs_undo */
-#define BS_NGROOVES 14
+#define BS_NGROOVES 18
 extern const char *const bs_groove_name[BS_NGROOVES];
 void bs_groove(bs_engine_t *e, int g);
 void bs_ghosts(bs_engine_t *e, float density, uint32_t seed);/* generates the GHOST track */
@@ -167,6 +173,11 @@ void bs_scene_store(bs_engine_t *e, int s);
 void bs_set_rhythm(bs_engine_t *e, float t);
 void bs_set_kit(bs_engine_t *e, float t);
 void bs_set_slices(bs_engine_t *e, int n);
+/* (0.7) the built-in breaks (without a bank): AMEN, THINK, APACHE, FUNKY DRUMMER, HOT PANTS, ROLLER; main loop only
+ * (regenerates the test break's RAM). bs_step_break: the next / previous one (a bank's breaks when one is in);
+ * returns its name */
+void bs_set_test_break(bs_engine_t *e, int id);
+const char *bs_step_break(bs_engine_t *e, int dir);
 void bs_fx_update(bs_engine_t *e);                           /* after a change of e->bus.m */
 void bs_snap(bs_engine_t *e);                                /* BREAK and KIT to their nearest nodes */
 const char *bs_kit_step(bs_engine_t *e, int dir);            /* KIT to the next / previous node; its name */

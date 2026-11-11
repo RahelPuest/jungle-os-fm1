@@ -42,7 +42,12 @@ void jb_slice_even(jb_break_t *b, uint32_t n);
 /* the original procedural test break (no samples, no third-party audio): one bar at 170 BPM rendered with the
  * drum models into buf (int16, at rate), sliced in 16 with known classes. buf needs frames_for(rate) entries */
 uint32_t jb_testbreak_frames(uint32_t rate);
-void jb_testbreak_make(jb_break_t *b, int16_t *buf, uint32_t rate);
+void jb_testbreak_make(jb_break_t *b, int16_t *buf, uint32_t rate);   /* the first: the Amen pattern */
+/* (0.7) the built-in breaks, the classic breaks' rhythms played by the drum models: AMEN, THINK, APACHE, FUNKY
+ * DRUMMER, HOT PANTS, ROLLER (docs/research/dnb-drums.md); the same RAM and slicing as above */
+#define JB_NTESTBREAKS 6
+void jb_testbreak_make_n(jb_break_t *b, int16_t *buf, uint32_t rate, uint32_t id);
+const char *jb_testbreak_name(uint32_t id);
 
 /* ------------------------------------------------------------------ player --- */
 typedef struct {

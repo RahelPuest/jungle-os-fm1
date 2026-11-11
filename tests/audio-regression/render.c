@@ -65,8 +65,8 @@ static bs_engine_t BS;
 static ab_engine_t AB;
 static int16_t testpcm[70000], roombuf[JF_VERB_TOTAL];
 static int16_t abpool[AB_POOL_SAMPLES];
-static int32_t lr24[44118 * 2 * 40];
-static int16_t lr16[44118 * 2 * 40];
+static int32_t lr24[44118 * 2 * 52];
+static int16_t lr16[44118 * 2 * 52];
 
 /* runs fn(block index) before each block, rendering `seconds` of e */
 typedef void (*script_t)(uint32_t blk);
@@ -141,6 +141,13 @@ static void scen_grooves(uint32_t b)
     if (b == 0) { bs_cmd_bpm(&BS, 174.0f); bs_cmd_play(&BS, 1); }
     if (two && b % two == 0 && g < BS_NGROOVES) bs_groove(&BS, (int)g);
 }
+/* (0.7) the built-in breaks (AMEN, THINK, APACHE, FUNKY DRUMMER, HOT PANTS, ROLLER) under P1 DROP, two bars each */
+static void scen_breaks(uint32_t b)
+{
+    uint32_t two = AT(2.0f * 4.0f * 60.0f / 174.0f), g = two ? b / two : 0u;
+    if (b == 0) { bs_cmd_bpm(&BS, 174.0f); bs_cmd_play(&BS, 1); }
+    if (two && b % two == 0 && g > 0u && g < JB_NTESTBREAKS) bs_set_test_break(&BS, (int)g);
+}
 /* C: FM growl over the clean sub, stabs over a held pad */
 static void scen_c(uint32_t b)
 {
@@ -183,7 +190,8 @@ static const scen_t SC[] = {
     {"B_mutate_undo_scene", 0, 13.0f, scen_b, 0.95f},
     {"perf_modes", 0, 15.0f, scen_perf, 0.95f},
     {"kit_sweep_pressure", 0, 12.0f, scen_kitsweep, 0.95f},
-    {"grooves", 0, 38.5f, scen_grooves, 0.95f},
+    {"grooves", 0, 49.6f, scen_grooves, 0.95f},
+    {"breaks", 0, 16.5f, scen_breaks, 0.95f},
     {"C_growl_sub_stab_pad", 1, 8.0f, scen_c, 0.95f},
     {"D_kick_ducking", 1, 6.0f, scen_d, 0.95f},
     {"E_morph_fm_nodes", 1, 16.0f, scen_e, 0.95f},

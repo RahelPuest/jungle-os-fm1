@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 JUNGLE OS contributors */
-/* Break Surgeon's synthesized drums: procedural models, no sample playback. Each voice takes four curated
+/* Break Surgeon's synthesized drums: procedural models, no sample playback (0.7: the kick in three layers with a
+ * hold, a two-stage pitch drop and an asymmetric saturation; the snare with a clap layer and an air crack; the hats
+ * as two metal bands plus noise, longer and louder; docs/research/dnb-drums.md). Each voice takes four curated
  * macros (0..1) and derives its physical parameters once per hit, so a parameter lock or a sweetspot morph costs
  * nothing per sample. The velocity shapes the timbre as well as the level (a harder hit is brighter, snappier,
  * with more click), and GHOST SNARE is the snare's own drum played softly. Monophonic per track, with a de-click
@@ -38,6 +40,13 @@ typedef struct {
     float declick;               /* the last output at a retrigger, faded out over ~1.5 ms */
     float last;
     jo_rng_t rng;
+    /* (0.7) the kick's hold before its decay and its second (knock) pitch stage; the snare's clap bursts; a
+     * swell for soft attacks (shakers); a second high-pass; the saturation's DC blocker */
+    uint32_t t, hold;
+    float knock, knock_mul, clap, clap_env, clap_mul, clap_tail_mul, att, att_k;
+    jo_svf_t svf_c;
+    jo_onepole_t hp2;
+    jo_dcb_t dcb;
 } jd_voice_t;
 
 void jd_sound_default(jd_sound_t *s, int model);

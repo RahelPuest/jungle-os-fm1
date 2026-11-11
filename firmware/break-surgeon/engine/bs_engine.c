@@ -138,8 +138,9 @@ void bs_default_patterns(bs_engine_t *e)
         /* 3 INTRO: the break thinned out, no synthetic kick or snare */
         {"x.x.x..xx.x.x.x.", "................", "................", "", "..o...o...o...o.", "", ""},
     };
-    /* ROLLER's break edit: slices 1-8, then 1-2 again, the rest, the last snare doubled into a roll */
-    static const uint8_t ROLL_EDIT[16] = {0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 12, 15};
+    /* ROLLER's break edit (0.7: the classic re-chop, docs/research/dnb-drums.md): the break's first half, its first
+     * four again, then the last snares doubled, the second into a roll */
+    static const uint8_t ROLL_EDIT[16] = {0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 12, 13, 12, 15};
     uint32_t p, t, i;
     for (p = 0; p < BS_NPATTERNS; p++) {
         js_pattern_clear(&e->pat[p], BS_NTRACKS, 16);
@@ -248,40 +249,51 @@ int bs_undo(bs_engine_t *e)
 /* the classic drum & bass patterns, as the genre plays them (common forms, written here on the 16th grid; not
  * transcriptions of any recording). Per groove: KICK, SNARE, GHOST, HATS as 16 or 32 characters ('X' accent,
  * 'x' on, 'o' soft, 'g' ghost, 'O' open hat, '.' off), the swing; the break follows the kick and snare */
-typedef struct { const char *k, *s, *g, *h; uint8_t swing; } groove_t;
+/* (0.7) brk: a classic jungle edit, the break's slice per 16th in hex ('.' = from the kick and snare) */
+typedef struct { const char *k, *s, *g, *h; uint8_t swing; const char *brk; } groove_t;
 const char *const bs_groove_name[BS_NGROOVES] = {
     "2-STEP", "DELAYED 2-STEP", "STEPPA", "EXTENDED STEPPA", "STOMPA", "HALF-TIME", "DANCEHALL", "FOOTWORK",
-    "TRIPLET 2-STEP", "ROLLER", "JUMP UP", "TECHSTEP", "DANCEFLOOR", "AMEN"};
+    "TRIPLET 2-STEP", "ROLLER", "JUMP UP", "TECHSTEP", "DANCEFLOOR", "AMEN", "LIQUID", "NEURO", "JUNGLE EDIT",
+    "SNARE ROLL EDIT"};
 static const groove_t GROOVE[BS_NGROOVES] = {
     /* 2-STEP: the kick on 1 and the and of 3, the snare on 2 and 4: the backbone */
-    {"X.........x.....", "....X.......X...", "......g.......g.", "..x...x...x...x.", 50},
+    {"X.........x.....", "....X.......X...", "......g.......g.", "..x...x...x...x.", 50, 0},
     /* DELAYED 2-STEP: the second snare a 16th late */
-    {"X.........x.....", "....X........X..", "..........g....g", "..x...x...x...x.", 50},
+    {"X.........x.....", "....X........X..", "..........g....g", "..x...x...x...x.", 50, 0},
     /* STEPPA: the kick on 1 and 3, straight, steppy */
-    {"X.......X.......", "....X.......X...", "..g........g....", "x.x.x.x.x.x.x.x.", 50},
+    {"X.......X.......", "....X.......X...", "..g........g....", "x.x.x.x.x.x.x.x.", 50, 0},
     /* EXTENDED STEPPA: two bars, the second's kick pushed and a snare pickup */
     {"X.......X.......X.......X.x.....", "....X.......X.......X.......X..x", "..g........g......g.....g.......",
-     "x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.", 50},
+     "x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.", 50, 0},
     /* STOMPA: the kick stomping through the and of 2 into 3 */
-    {"X.....x.X.......", "....X.......X...", "..............g.", "..x...x...x...x.", 50},
+    {"X.....x.X.......", "....X.......X...", "..............g.", "..x...x...x...x.", 50, 0},
     /* HALF-TIME: one snare a bar, on 3 */
-    {"X.........x.....", "........X.......", "...............g", "x...x...x...x...", 50},
+    {"X.........x.....", "........X.......", "...............g", "x...x...x...x...", 50, 0},
     /* DANCEHALL: the kick on 1 and 3 under the dembow's snares */
-    {"X.......X.......", "...x..X....x..X.", "................", "..x...x...x...x.", 50},
+    {"X.......X.......", "...x..X....x..X.", "................", "..x...x...x...x.", 50, 0},
     /* FOOTWORK: dotted kicks against the backbeat, the fake triplets */
-    {"X..x..x...x..x..", "....X.......X...", "................", "..x...x...x...x.", 50},
+    {"X..x..x...x..x..", "....X.......X...", "................", "..x...x...x...x.", 50, 0},
     /* TRIPLET 2-STEP: the 2-step shuffled, 16th hats swung hard */
-    {"X.........x.....", "....X.......X...", ".......g......g.", "xoxoxoxoxoxoxoxo", 67},
+    {"X.........x.....", "....X.......X...", ".......g......g.", "xoxoxoxoxoxoxoxo", 67, 0},
     /* ROLLER: 2-step with rolling ghosts and 16th hats, a little swing */
-    {"X.........x.....", "....X.......X...", ".g....g..g....g.", "xoxoxoxoxoxoxoxo", 56},
+    {"X.........x.....", "....X.......X...", ".g....g..g....g.", "xoxoxoxoxoxoxoxo", 56, 0},
     /* JUMP UP: the kick bouncing on 3 and its and */
-    {"X.......X.x.....", "....X.......X...", "..............g.", "..x...x...x...x.", 50},
+    {"X.......X.x.....", "....X.......X...", "..............g.", "..x...x...x...x.", 50, 0},
     /* TECHSTEP: hard and straight, the kick pushing at 4 */
-    {"X.........X..x..", "....X.......X...", "................", "x.x.x.x.x.x.x.x.", 50},
+    {"X.........X..x..", "....X.......X...", "................", "x.x.x.x.x.x.x.x.", 50, 0},
     /* DANCEFLOOR: a kick before the second snare, ghosts ahead of the snares */
-    {"X......x..X.....", "....X.......X...", "...g..........g.", "..x...x...x...x.", 50},
+    {"X......x..X.....", "....X.......X...", "...g..........g.", "..x...x...x...x.", 50, 0},
     /* AMEN: the break alone, as it is */
-    {"", "", "", "", 50},
+    {"", "", "", "", 50, 0},
+    /* (0.7) LIQUID: the 2-step softened, ghosts all around the backbeat, 16th hats shuffled a little */
+    {"X.........x.....", "....X.......X...", ".g...g.g...g..g.", "xoxoxoxoxoxoxoxo", 54, 0},
+    /* NEURO: tight and dry, the kick syncopated off the 1 and before the second snare, straight 8th hats */
+    {"X..x......x..x..", "....X.......X...", "...........g....", "x.x.x.x.x.x.x.x.", 50, 0},
+    /* JUNGLE EDIT: the break's first half twice, then its last snares doubled: the classic re-chop, the kick and
+     * the backbeat under it */
+    {"X.........x.....", "....X.......X...", "", "", 50, "012345670123CDCF"},
+    /* SNARE ROLL EDIT: the break straight, its last four 16ths one snare repeated into the next bar */
+    {"X.........x.....", "....X.......X...", "", "", 50, "0123456789ABCCCC"},
 };
 
 static void groove_track(js_track_t *t, const char *s, uint32_t len)
@@ -345,6 +357,13 @@ void bs_groove(bs_engine_t *e, int g)
         if (!gr->k[0] || sl < 0) sl = (int)pos;
         if (!gr->k[0] || k || s) st->vel = 110;
         else st->vel = gh ? 64 : 90;
+        if (gr->brk && gr->brk[i] && gr->brk[i] != '.') { /* (0.7) a classic edit's own chop */
+            char c = gr->brk[i];
+            uint32_t hx = c >= 'A' ? (uint32_t)(c - 'A' + 10) : (uint32_t)(c - '0');
+            sl = (int)((hx * n / 16u) % n);
+            st->vel = 105;
+            if (i >= 12u && gr->brk[i] == gr->brk[i - 1u]) st->vel = (uint8_t)(70 + 12 * (int)(i - 11u)); /* the roll builds */
+        }
         st->flags = JS_ON;
         st->data = (uint8_t)sl;
     }
@@ -654,6 +673,7 @@ static void fire_(bs_engine_t *e, const js_event_t *ev)
     if (ev->nhits > 1u) vel *= 0.6f + 0.4f * (float)(ev->hit + 1u) / (float)ev->nhits; /* rolls crescendo */
     if (ev->track == BS_T_BREAK) {
         int tune = locki(ev, BS_LK_TUNE), loop = locki(ev, BS_LK_LOOP);
+        if (e->brk_busy) return; /* (0.7) the break is being regenerated */
         const jb_break_t *b = &e->breaks[e->cur_break];
         e->player.gate = lockf(ev, BS_LK_GATE, 1.0f);
         jb_play(&e->player, ev->data, vel, (ev->flags & JS_REVERSE) != 0, tune >= 0 ? (float)(tune - 128) * 0.25f : 0.0f);
@@ -674,6 +694,7 @@ static void fire_(bs_engine_t *e, const js_event_t *ev)
         s.level = lockf(ev, BS_LK_LEVEL, s.level);
         vel *= jo_db2lin(e->kv.trim_db);
         jd_trigger(&e->dv[ev->track], &s, vel, ev->track == BS_T_HATS && (ev->flags & BS_FLAG_OPEN));
+        if (ev->track == BS_T_KICK && ev->hit == 0u) e->brk_duck = jo_maxf(e->brk_duck, BS_BREAK_DUCK * vel);
         if (e->send_kicks && ev->hit == 0u && (ev->track == BS_T_KICK || ev->track == BS_T_SNARE) &&
             (np = jl_trigger(&e->link, ev->track == BS_T_KICK ? JL_NOTE_KICK : JL_NOTE_SNARE, ev->vel, e->ms, pk)))
             send(e, pk, np);
@@ -691,6 +712,46 @@ int bs_load_bank(bs_engine_t *e, const uint8_t *bank, uint32_t len)
     jb_player_init(&e->player, &e->breaks[0]);
     e->player.level = e->break_level;
     return n;
+}
+
+/* (0.7) the built-in break (no bank): regenerated into the test break's RAM in the main loop, the break track
+ * silent meanwhile (the render is locked out only to stop and to restart it) */
+void bs_set_test_break(bs_engine_t *e, int id)
+{
+    uint32_t f;
+    if (e->has_bank || !e->test_pcm) return;
+    e->test_id = (uint8_t)(((id % JB_NTESTBREAKS) + JB_NTESTBREAKS) % JB_NTESTBREAKS);
+    f = lock_fn();
+    e->brk_busy = 1;
+    jb_release(&e->player);
+    e->player.v[0].active = e->player.v[1].active = 0;
+    unlock_fn(f);
+    jb_testbreak_make_n(&e->breaks[0], e->test_pcm, 22059u, e->test_id);
+    if (e->slices != 16u) bs_set_slices(e, e->slices);
+    f = lock_fn();
+    e->nbreaks = 1;
+    e->cur_break = 0;
+    e->player.brk = &e->breaks[0];
+    e->brk_busy = 0;
+    unlock_fn(f);
+}
+
+/* the next / previous break: a bank's breaks, or the built-in ones; returns its name */
+const char *bs_step_break(bs_engine_t *e, int dir)
+{
+    if (e->has_bank) {
+        uint32_t f;
+        if (e->nbreaks < 2u) return e->breaks[e->cur_break].name;
+        f = lock_fn();
+        jb_release(&e->player);
+        e->player.v[0].active = e->player.v[1].active = 0;
+        e->cur_break = (uint8_t)((e->cur_break + e->nbreaks + (dir > 0 ? 1 : -1)) % e->nbreaks);
+        e->player.brk = &e->breaks[e->cur_break];
+        unlock_fn(f);
+        return e->breaks[e->cur_break].name;
+    }
+    bs_set_test_break(e, (int)e->test_id + (dir > 0 ? 1 : -1));
+    return e->breaks[0].name;
 }
 
 void bs_set_slices(bs_engine_t *e, int n)
@@ -1051,8 +1112,30 @@ static void render_voices(bs_engine_t *e, float *buf, float *send, uint32_t n)
     for (t = 0; t < BS_NTRACKS; t++) {
         if (t == 0 ? !(e->player.v[0].active || e->player.v[1].active) : !e->dv[t].active) continue;
         for (i = 0; i < n; i++) tmp[i] = 0.0f;
-        if (t == 0) jb_render(&e->player, tmp, n);
-        else jd_render(&e->dv[t], tmp, n);
+        if (t == 0) {
+            /* (0.7) the break as it sits under programmed drums (docs/research/dnb-drums.md): its lows cut below
+             * ~70 Hz while the synthesized kick plays (the break's own kick keeps its punch, the low end is the
+             * kick's and the sub's), and ducked by up to -3.5 dB under each synthesized kick (released over 70 ms) */
+            int layered = 0;
+            if (e->seq.pat && !((e->seq.mute >> BS_T_KICK) & 1u)) {
+                const js_track_t *kt = &e->seq.pat->t[BS_T_KICK];
+                uint32_t s;
+                for (s = 0; s < kt->len && !layered; s++) layered = (kt->s[s].flags & JS_ON) != 0;
+            }
+            jb_render(&e->player, tmp, n);
+            for (i = 0; i < n; i++) {
+                float y = tmp[i];
+                float lo = jo_lp1(&e->brk_lp, y, 0.0099f);
+                if (layered || e->brk_lo_cut > 0.0f) {
+                    e->brk_lo_cut += ((layered ? 1.0f : 0.0f) - e->brk_lo_cut) * 0.002f; /* no jump in or out */
+                    y -= lo * e->brk_lo_cut;
+                }
+                y *= 1.0f - e->brk_duck;
+                e->brk_duck *= 0.99968f; /* ~70 ms to -20 dB */
+                tmp[i] = y;
+            }
+        } else
+            jd_render(&e->dv[t], tmp, n);
         for (i = 0; i < n; i++) {
             buf[i] += tmp[i];
             send[i] += tmp[i] * ROOM_SEND[t];
