@@ -14,6 +14,7 @@
  *   CC 106 FILL_END
  *   CC 107 DROP                CC 108 RESET (to the stable groove)      CC 109 ENERGY 0..127
  *   CC 110 ROOT 0..11          CC 111 SCALE id
+ *   CC 112 DENSITY 0..127      (0.6) how busy the drums were in the last bar (DUET's pocket)
  *   Note 36 KICK_TRIGGER, Note 38 SNARE_TRIGGER (velocity), at most one each per 15 ms */
 #pragma once
 #include <stdint.h>
@@ -29,6 +30,7 @@
 #define JL_CC_ENERGY 109u
 #define JL_CC_ROOT 110u
 #define JL_CC_SCALE 111u
+#define JL_CC_DENSITY 112u
 #define JL_NOTE_KICK 36u
 #define JL_NOTE_SNARE 38u
 #define JL_HEARTBEAT_MS 500u
@@ -40,7 +42,7 @@ enum { JL_Q_NOW, JL_Q_BEAT, JL_Q_BAR, JL_Q_2BAR, JL_Q_4BAR };
 enum {
     JL_EV_NONE, JL_EV_CLOCK, JL_EV_START, JL_EV_CONTINUE, JL_EV_STOP, JL_EV_SCENE, JL_EV_FILL_BEGIN, JL_EV_FILL_END,
     JL_EV_DROP, JL_EV_RESET, JL_EV_ENERGY, JL_EV_ROOT, JL_EV_SCALE, JL_EV_KICK, JL_EV_SNARE, JL_EV_HELLO,
-    JL_EV_VERSION_MISMATCH
+    JL_EV_VERSION_MISMATCH, JL_EV_DENSITY
 };
 typedef struct { uint8_t type, a, b; } jl_event_t; /* SCENE: a scene, b quant; FILL: a bars; KICK: a velocity */
 

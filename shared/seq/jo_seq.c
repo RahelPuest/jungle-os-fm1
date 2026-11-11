@@ -90,6 +90,7 @@ void js_step_clear(js_step_t *st)
     st->data = 0;
     st->lk_id[0] = st->lk_id[1] = JS_LOCK_NONE;
     st->cond = JS_C_ALWAYS;
+    st->lvl = 0;
     st->lk_val[0] = st->lk_val[1] = 0;
 }
 
@@ -103,6 +104,8 @@ void js_pattern_clear(js_pattern_t *p, uint8_t ntracks, uint8_t len)
         p->t[t].len = len < 1 ? 1 : len > JS_MAXSTEPS ? JS_MAXSTEPS : len;
         p->t[t].div = 0;
         p->t[t].rsv[0] = p->t[t].rsv[1] = 0;
+        p->t[t].route = JS_R_FORWARD, p->t[t].route_len = 0;
+        { uint32_t k; for (k = 0; k < JS_MAXSTEPS; k++) p->t[t].order[k] = (uint8_t)k; }
         for (s = 0; s < JS_MAXSTEPS; s++) {
             js_step_clear(&p->t[t].s[s]);
             p->t[t].s[s].data = (uint8_t)s;
@@ -206,6 +209,47 @@ int js_cond_ok(uint8_t c, uint32_t bar, int fill, uint32_t phrase)
     }
 }
 
+/* ---------------------------------------------------------------- routes --- */
+const char *const js_route_name[JS_NROUTES] = {"FORWARD", "REVERSE", "PENDULUM", "SNAKE", "SPIRAL", "SWAP",
+                                             "STUTTER", "WALK", "CUSTOM"};
+uint32_t js_route_idx(const js_track_t *t, uint8_t route, uint32_t p, uint32_t len, uint32_t bar, uint16_t seed)
+{
+    static const uint8_t SPIRAL[16] = {0, 1, 2, 3, 7, 11, 15, 14, 13, 12, 8, 4, 5, 6, 10, 9};
+    static const uint8_t STUT[4] = {0, 0, 1, 2};
+    uint32_t r, k, w;
+    if (!len) return 0;
+    p %= len;
+    switch (route) {
+    case JS_R_REVERSE: return len - 1u - p;
+    case JS_R_PENDULUM: return p < (len + 1u) / 2u ? p : len - 1u - p;
+    case JS_R_SNAKE: r = p >> 2; return (r & 1u) ? ((r << 2) + 3u - (p & 3u)) % len : p;
+    case JS_R_SPIRAL: return len == 16u ? SPIRAL[p] : (len == 32u ? (uint32_t)SPIRAL[p & 15u] + (p & 16u) : p);
+    case JS_R_SWAP: return (p + len / 2u) % len;
+    case JS_R_STUTTER: return ((p & ~3u) + STUT[p & 3u]) % len;
+    case JS_R_WALK: /* a step back or forward (or one skipped) from the last, the bar's own path, 1 at every bar */
+        w = 0;
+        for (k = 1; k <= p; k++) {
+            uint32_t h = js_hash(seed, bar, k, 0x7A1Bu) % 8u;
+            if ((k & 15u) == 0u) w = k; /* every bar starts on its 1 */
+            else w = (w + (h < 3u ? len - 1u : h < 7u ? 1u : 2u)) % len;
+        }
+        return w;
+    case JS_R_CUSTOM: return t && t->route_len ? t->order[p % t->route_len] % len : p;
+    default: return p;
+    }
+}
+
+void js_decay_pass(js_track_t *t, uint8_t amount)
+{
+    uint32_t i;
+    for (i = 0; i < JS_MAXSTEPS; i++) {
+        js_step_t *st = &t->s[i];
+        if ((st->flags & (JS_ON | JS_DECAY | JS_BURN)) != (JS_ON | JS_DECAY)) continue;
+        st->vel = (uint8_t)((uint32_t)st->vel * (256u - amount) / 256u);
+        if (st->vel < 10u) st->flags &= (uint8_t)~(JS_ON | JS_DECAY);
+    }
+}
+
 /* -------------------------------------------------------------- sequencer --- */
 void js_seq_init(js_seq_t *s, const js_pattern_t *p)
 {
@@ -214,6 +258,8 @@ void js_seq_init(js_seq_t *s, const js_pattern_t *p)
     s->mute = s->solo = 0;
     s->fill = 0;
     s->phrase = 4;
+    s->energy = 4;
+    for (t = 0; t < JS_MAXTRACKS; t++) s->route_ovr[t] = 0xFFu;
     for (t = 0; t < JS_MAXTRACKS; t++)
         s->pos[t] = 0, s->sub[t] = 0;
 }
@@ -241,6 +287,8 @@ static void queue_track(js_seq_t *s, js_queue_t *q, uint32_t t, uint32_t idx, ui
     if (!(st->flags & JS_ON))
         return;
     if (st->cond && !js_cond_ok(st->cond, abs_step >> 4, s->fill, s->phrase))
+        return;
+    if (st->lvl > (s->energy ? s->energy : 4u))
         return;
     if (st->prob < 100u && (js_hash(p->seed, abs_step >> 4, idx, t) % 100u) >= st->prob)
         return;
@@ -309,8 +357,10 @@ void js_run(js_seq_t *s, js_clock_t *c, js_queue_t *q, uint32_t n, const js_hook
                     continue;
                 for (r = 0; r < reps; r++) {
                     uint32_t idx = s->pos[t] % len;
+                    uint8_t route = s->route_ovr[t] != 0xFFu ? s->route_ovr[t] : tr->route;
+                    uint32_t at = route ? js_route_idx(tr, route, idx, len, next >> 4, s->pat->seed) : idx;
                     if (play)
-                        queue_track(s, q, t, idx, next, base, grid + (float)r * 0.5f * sps, sps, swung && tr->div == 0, h);
+                        queue_track(s, q, t, at, next, base, grid + (float)r * 0.5f * sps, sps, swung && tr->div == 0, h);
                     s->pos[t] = (uint16_t)((idx + 1u) % len);
                 }
             }

@@ -41,7 +41,7 @@ int jl_decode(jl_link_t *l, uint32_t pkt, uint32_t now_ms, jl_event_t *ev)
         l->heard = 1;
         return 1;
     }
-    if ((st & 0xF0u) != 0xB0u || d1 < JL_CC_HELLO || d1 > JL_CC_SCALE)
+    if ((st & 0xF0u) != 0xB0u || d1 < JL_CC_HELLO || d1 > JL_CC_DENSITY)
         return 0;
     l->last_heard_ms = now_ms;
     l->heard = 1;
@@ -68,6 +68,7 @@ int jl_decode(jl_link_t *l, uint32_t pkt, uint32_t now_ms, jl_event_t *ev)
     case JL_CC_DROP: ev->type = JL_EV_DROP; return 1;
     case JL_CC_RESET: ev->type = JL_EV_RESET; return 1;
     case JL_CC_ENERGY: ev->type = JL_EV_ENERGY; ev->a = d2; return 1;
+    case JL_CC_DENSITY: ev->type = JL_EV_DENSITY; ev->a = d2; return 1;
     case JL_CC_ROOT: ev->type = JL_EV_ROOT; ev->a = (uint8_t)(d2 % 12u); return 1;
     default: ev->type = JL_EV_SCALE; ev->a = d2; return 1;
     }

@@ -20,7 +20,9 @@
 #define JS_QLEN 64       /* pending events */
 #define JS_LOCK_NONE 0xFFu
 
-enum { JS_ON = 1, JS_ACCENT = 2, JS_SLIDE = 4, JS_REVERSE = 8, JS_TIE = 16 };
+enum { JS_ON = 1, JS_ACCENT = 2, JS_SLIDE = 4, JS_REVERSE = 8, JS_TIE = 16,
+       JS_DECAY = 32, /* (0.6) TAPE DECAY: the step fades a little every pass (js_decay_pass) */
+       JS_BURN = 64 };  /* (0.6) TAPE DECAY: burned in, never fades */
 
 typedef struct {
     uint8_t flags;            /* JS_* */
@@ -32,6 +34,7 @@ typedef struct {
     uint8_t lk_id[JS_NLOCK];  /* locked parameter ids, JS_LOCK_NONE = free */
     uint8_t lk_val[JS_NLOCK]; /* their values, 0..255 */
     uint8_t cond;             /* (0.5) a trig condition, JS_C_* (JS_C_ALWAYS: none) */
+    uint8_t lvl;              /* (0.6) ENERGY level 1..4 (0 = 1): the step plays while js_seq_t.energy >= lvl */
 } js_step_t;
 
 /* (0.5) trig conditions: when a step plays. N:M = the Nth bar of every M (bars counted on the global 16th grid, so
@@ -48,7 +51,19 @@ typedef struct {
     uint8_t len;   /* 1..JS_MAXSTEPS */
     uint8_t div;   /* 0: 1/16, 1: 1/32 (double speed), 2: 1/8 (half) */
     uint8_t rsv[2];
+    /* (0.6) ROUTES: the order the playhead takes through the steps (JS_R_*); JS_R_CUSTOM plays order[0..route_len) */
+    uint8_t route, route_len;
+    uint8_t order[JS_MAXSTEPS];
 } js_track_t;
+
+/* (0.6) ROUTES: every route maps the track's position p (0..len-1, counting as always) to the step played there,
+ * so a route keeps the bar: FORWARD, REVERSE, PENDULUM (the first half, then back), SNAKE and SPIRAL (the 16 steps as
+ * a 4 x 4 field), SWAP (the second half first), STUTTER (1 1 2 3 in every beat), WALK (a random walk, the same
+ * every pass of the same bar, back on 1 at every bar), CUSTOM (the track's own order) */
+enum { JS_R_FORWARD, JS_R_REVERSE, JS_R_PENDULUM, JS_R_SNAKE, JS_R_SPIRAL, JS_R_SWAP, JS_R_STUTTER, JS_R_WALK,
+       JS_R_CUSTOM, JS_NROUTES };
+extern const char *const js_route_name[JS_NROUTES];
+uint32_t js_route_idx(const js_track_t *t, uint8_t route, uint32_t p, uint32_t len, uint32_t bar, uint16_t seed);
 
 typedef struct {
     js_track_t t[JS_MAXTRACKS];
@@ -110,6 +125,8 @@ typedef struct {
     uint32_t sub[JS_MAXTRACKS];/* per-track sub-step counters for div != 0 */
     uint8_t fill;              /* (0.5) a fill plays (the instrument sets it): for JS_C_FILL / JS_C_NOT_FILL */
     uint8_t phrase;            /* (0.5) the phrase in bars (4, 8, 16): for JS_C_FIRST / JS_C_LAST */
+    uint8_t energy;            /* (0.6) ENERGY 1..4: steps with lvl above it are silent (4: everything plays) */
+    uint8_t route_ovr[JS_MAXTRACKS]; /* (0.6) a live route over the track's own (JS_R_*), 0xFF: none */
 } js_seq_t;
 
 void js_seq_init(js_seq_t *s, const js_pattern_t *p);
@@ -144,6 +161,9 @@ void js_step_clear(js_step_t *st);
 int js_step_lock(const js_step_t *st, uint8_t id);
 /* sets (or with val < 0 removes) a lock; 0 = done, -1 = both slots used by other ids */
 int js_step_set_lock(js_step_t *st, uint8_t id, int val);
+/* (0.6) TAPE DECAY, one pass (the main loop, once a bar, locked): every JS_DECAY step not JS_BURN loses
+ * amount/256 of its velocity and goes off under 10 */
+void js_decay_pass(js_track_t *t, uint8_t amount);
 /* the deterministic hash behind probability and generators */
 uint32_t js_hash(uint32_t seed, uint32_t a, uint32_t b, uint32_t c);
 /* wrap-safe "time a is before time b" */

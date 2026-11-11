@@ -112,3 +112,61 @@ A held step shows a popup with all its values. The header shows the pattern, the
 SEL + black (now the SONG and STORE layers); SEL + SEQ (now VARY's FORM); REC = RETURN (performance FX end on
 release, fills end themselves, everything else has undo; RETURN stays as SEL + REC: back to the stored scene's
 state, quantized).
+
+## 0.6: ROUTES, DNA, DUET, ENERGY, TAPE DECAY (implemented)
+
+0.6 gives the sequencer its own ideas instead of copying a classic one. Each firmware gets an identity, and one
+idea joins them. Everything of 0.5 stays; the new tools sit on the two buttons 0.5 left as plain pages
+(**SEQ** and **HOME** now also have a hold) and on the SONG page.
+
+### Shared foundation (shared/seq)
+- `js_track_t.route` / `order[]` and `js_seq_t.route_ovr[]`: the playhead's path (FORWARD, REVERSE, PENDULUM,
+  SNAKE, SPIRAL, SWAP, STUTTER, WALK, CUSTOM; `js_route_idx`). A route keeps the bar; the steps are not changed.
+- `js_step_t.lvl` and `js_seq_t.energy`: a step with level L plays while ENERGY's level (`je_level`) is >= L.
+- `jo_energy.h`: the ENERGY value (knob or recorded curve per beat over a phrase).
+- `JS_DECAY` / `JS_BURN` and `js_decay_pass`: TAPE DECAY.
+- JUNGLE LINK: CC 109 ENERGY both ways (either side sends when its ENERGY moves, the other follows), CC 112
+  DENSITY (Break Surgeon once a bar).
+- Defaults keep the sound of 0.5: ENERGY full (4), no route, decay off.
+
+### ENERGY (both): hold HOME
+- **Hold HOME = ENERGY layer.** SELECT (or K1) = ENERGY 0–100 %; the white keys cycle the selected track's steps'
+  levels 1 → 2 → 3 → 4 (the grid shows the level as the box's height); K2 = CURVE: REC (record one phrase of the
+  knob from the next phrase start), PLAY, OFF; K3 = AUTO LEVELS (sets the selected track's levels from its musical
+  role: downbeat and backbeat 1, other hits 2, ghosts and soft hits 3, ratchets / fills / offbeat 16ths 4).
+- Grooves (Break Surgeon) and library lines (Abyss) load with automatic levels.
+- ENERGY also moves the sound a little (Break Surgeon: below full it thins the room and the grit; Abyss: lower
+  BITE, a darker pad; at full exactly 0.5's sound).
+- The header shows ENERGY as a small bar; over the link the two follow each other.
+
+### Break Surgeon: ROUTES and DNA
+- **Hold SEQ = ROUTE layer** (tap SEQ = the overview, then DNA, in turn):
+  - black 1–9 = the routes FORWARD … CUSTOM on the selected track while held;
+  - white keys pressed in order = draw a CUSTOM route (it plays from the second key on);
+  - K1 TARGET: the selected track, BREAK only, or ALL tracks; K2 LATCH: off (the route ends when SEQ is
+    released) or on (it is written into the track's route, undoable).
+  - The main grid shows the playhead's path.
+- **DNA page** (SEQ's second tap): a family tree of up to 16 genomes (pattern snapshots).
+  - Tap LFO on this page = breed: a child of the playing genome (MUTATE amount from VARY);
+  - white 1–16 = play that genome from the next bar;
+  - black 1 KEEP (a star; kept genomes are never culled), black 2 KILL (the genome and its children), black 3
+    CROSS (hold a white key = parent A, press another = parent B: a child with A's drums and B's break chops);
+  - hold SAVE + white 9–12 = store the playing genome as pattern P1–P4.
+  - When the tree is full, the oldest unkept leaf goes.
+- Sends DENSITY once a bar.
+
+### Abyss Engine: DUET
+- **Hold SEQ = DUET layer** (tap SEQ = the overview as before); K1–K4 and the SONG page set its three parts:
+  - **ANSWER ME:** while on, the keys play the bass live (not the steps); after each bar you played, the next bar the
+    machine answers with a transformed copy: ECHO, INVERT, RETRO, DISPLACE (an 8th late), OCT DOWN, SPARSE (K2),
+    in variation C's sound. A bar without your notes gets no answer.
+  - **POCKET:** the bass's steps on Break Surgeon's kicks (learned from the link's kick triggers in the last bar)
+    are moved into the gaps; with Break Surgeon's DENSITY high the bass thins out, low it fills in (amount K3).
+  - **GESTURE ECHO:** the performance FX and knob moves of one phrase are played back in the next at half depth
+    (on/off K4).
+- Without the link, POCKET shows NO LINK and does nothing.
+
+### TAPE DECAY (both): SONG page
+- DECAY on/off and AMOUNT on the SONG page. With it on, everything REC records fades a little each pass and goes
+  after some passes; a step held for half a second (no knob turned) is BURNED in (it stays; shown solid).
+- The grid shows fading steps dimmer.

@@ -1,7 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include "../jo_test.h"
+#include <string.h>
+#include <math.h>
 #include "../../shared/seq/jo_seq.h"
 #include "../../shared/seq/jo_undo.h"
+#include "../../shared/seq/jo_energy.h"
 
 static js_pattern_t P;
 static js_clock_t C;
@@ -196,10 +199,53 @@ TEST(test_undo_stack)
     CHECK(us.cur == JU_DEPTH);
 }
 
+/* (0.6) routes keep the bar and visit every step (except the folding ones), energy levels, tape decay */
+static js_track_t rt;
+TEST(test_routes)
+{
+    uint32_t r, p, seen, bar;
+    memset(&rt, 0, sizeof rt);
+    for (r = 0; r < JS_NROUTES; r++) {
+        seen = 0;
+        for (p = 0; p < 16u; p++) {
+            uint32_t i = js_route_idx(&rt, (uint8_t)r, p, 16, 3, 77);
+            CHECKF(i < 16u, "route %u at %u gives %u", r, p, i);
+            seen |= 1u << i;
+        }
+        if (r == JS_R_FORWARD || r == JS_R_REVERSE || r == JS_R_SNAKE || r == JS_R_SPIRAL || r == JS_R_SWAP)
+            CHECKF(seen == 0xFFFFu, "route %s plays every step", js_route_name[r]);
+    }
+    CHECK(js_route_idx(&rt, JS_R_REVERSE, 0, 16, 0, 0) == 15 && js_route_idx(&rt, JS_R_SNAKE, 4, 16, 0, 0) == 7);
+    CHECK(js_route_idx(&rt, JS_R_STUTTER, 1, 16, 0, 0) == 0 && js_route_idx(&rt, JS_R_STUTTER, 3, 16, 0, 0) == 2);
+    for (bar = 0; bar < 4u; bar++) CHECK(js_route_idx(&rt, JS_R_WALK, 0, 16, bar, 5) == 0);
+    CHECK(js_route_idx(&rt, JS_R_WALK, 9, 16, 2, 5) == js_route_idx(&rt, JS_R_WALK, 9, 16, 2, 5));
+    rt.route_len = 3; rt.order[0] = 4; rt.order[1] = 0; rt.order[2] = 12;
+    CHECK(js_route_idx(&rt, JS_R_CUSTOM, 0, 16, 0, 0) == 4 && js_route_idx(&rt, JS_R_CUSTOM, 5, 16, 0, 0) == 12);
+}
+TEST(test_energy_decay)
+{
+    je_energy_t e;
+    uint32_t s;
+    js_step_clear(&rt.s[0]); js_step_clear(&rt.s[1]);
+    rt.s[0].flags = JS_ON | JS_DECAY; rt.s[0].vel = 100;
+    rt.s[1].flags = JS_ON | JS_DECAY | JS_BURN; rt.s[1].vel = 100;
+    for (s = 0; s < 40u; s++) js_decay_pass(&rt, 40);
+    CHECK(!(rt.s[0].flags & JS_ON) && (rt.s[1].flags & JS_ON) && rt.s[1].vel == 100);
+    CHECK(je_level(0.1f) == 1 && je_level(0.6f) == 3 && je_level(1.0f) == 4);
+    je_init(&e);
+    e.recording = 1;
+    for (s = 0; s < 64u; s++) { e.knob = (float)s / 63.0f; je_step(&e, s, 4); }
+    CHECK(!e.recording && e.playing && e.beats == 16);
+    je_step(&e, 64u + 4u * 8u, 4);   /* the next phrase, beat 8 (its last 16th, 35, was the last written) */
+    CHECKF(fabsf(e.value - (35.0f / 63.0f)) < 0.02f, "curve plays %f", (double)e.value);
+}
+
 void run_seq(void)
 {
     RUN(test_conditions);
     RUN(test_undo_stack);
+    RUN(test_routes);
+    RUN(test_energy_decay);
     RUN(test_step_timing_174);
     RUN(test_long_run_no_drift);
     RUN(test_swing_micro_ratchet);

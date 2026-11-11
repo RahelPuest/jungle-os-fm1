@@ -27,7 +27,8 @@ On the link channel (default 16, SYSTEM page LINK CH, the same on both units):
 | FILL_END | CC 106 | |
 | DROP | CC 107 | (reserved for scene logic) |
 | RESET | CC 108 | back to the stable state (Break Surgeon's RETURN; Abyss: mutation and explore off) |
-| ENERGY | CC 109 = 0..127 | |
+| ENERGY | CC 109 = 0..127 | (0.6) the shared ENERGY: either side sends it when its ENERGY moves; the other follows |
+| DENSITY | CC 112 = 0..127 | (0.6) Break Surgeon, once a bar: how busy its drums were (DUET's pocket on Abyss) |
 | ROOT, SCALE | CC 110 = 0..11, CC 111 = scale id | |
 | KICK_TRIGGER | Note 36 on/off | Abyss's ducking envelope; at most one per 15 ms |
 | SNARE_TRIGGER | Note 38 on/off | (received, not used yet) |
