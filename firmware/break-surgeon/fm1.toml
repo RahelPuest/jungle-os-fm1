@@ -16,5 +16,5 @@ words = "words.tsv"
 tags = ["drum-machine", "sampler", "sequencer"]
 install = "https://rahelpuest.github.io/jungle-os-fm1/break-surgeon/install/"
 site = "https://rahelpuest.github.io/jungle-os-fm1/break-surgeon/"
-screenshot = "docs/img/perform_playing.png"
+screenshot = "docs/img/main.png"
 emu = ["midi", "data"]         # the browser emulator: Web MIDI (SysEx banks, the link) and the data area kept

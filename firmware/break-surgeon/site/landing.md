@@ -1,8 +1,10 @@
 # BREAK SURGEON
 
-BREAK SURGEON is the rhythm half of JUNGLE OS, a drum & bass live rig of two M-VAVE FM-1s. It plays sliced breaks and six synthesized drum models (PUNCH KICK, CRACK SNARE, GHOST SNARE, METAL HATS, BREAK PERC, IMPACT FX) on one sample-accurate 7-track sequencer with velocity, probability, ratchets, microtiming, swing and parameter locks. On top of that: fills that return cleanly, ghost-note generation, mutation with anchors and undo, BREAK-LOCK, seven held performance modes (ROLL, CHOP, REVERSE, GLITCH, DESTROY, FREEZE) with RETURN, sweetspot graphs for the rhythm and the kit, six scenes and the DRUM PRESSURE master bus. It works alone, and with ABYSS ENGINE on a second FM-1 over JUNGLE LINK.
+BREAK SURGEON is the rhythm half of JUNGLE OS, a drum & bass live rig of two M-VAVE FM-1s. It plays sliced breaks and six synthesized drum models (PUNCH KICK, CRACK SNARE, GHOST SNARE, METAL HATS, BREAK PERC, IMPACT FX) on one sample-accurate 7-track sequencer with velocity, probability, ratchets, microtiming, swing and parameter locks. On top of that: fills that return cleanly, ghost-note generation, mutation with anchors and undo, BREAK-LOCK, eight held performance FX (ROLL, CHOP, REVERSE, GLITCH, DESTROY, FREEZE, TAPE STOP) with RETURN, sweetspot graphs for the rhythm and the kit, six scenes and the DRUM PRESSURE master bus. It works alone, and with ABYSS ENGINE on a second FM-1 over JUNGLE LINK.
 
-![BREAK SURGEON's PERFORM page while playing: scene DROP, rhythm CLEAN, kit JUNGLE SNAP](img/home.png "BREAK SURGEON on the FM-1's screen")
+![BREAK SURGEON's main page while playing: the BREAK track's 16 steps big, the seven tracks as rows below](img/home.png "BREAK SURGEON on the FM-1's screen")
+
+New in 0.5: a step sequencer first. The white keys are always the selected track's steps, the black keys the tracks; the live tools sit on held buttons (hold FX: performance FX incl. TAPE STOP; hold ENV: four fill types; hold LFO: variations A-D and a FORM such as A B A C; hold ARP: scenes, patterns and mutes). REC records live, hold REC erases, trig conditions (1:4, FILL, PHRASE END …) on every step, DENSITY and HUMANIZE, 8-step undo and redo, autosave after STOP.
 
 New in 0.4: GROOVES. ALGO on the SEQUENCE page loads one of 14 classic drum & bass grooves (2-STEP, STEPPA, HALF-TIME, DANCEHALL, FOOTWORK, ROLLER …) and re-chops the break to it.
 

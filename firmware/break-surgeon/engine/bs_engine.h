@@ -32,10 +32,19 @@ enum {
 };
 
 enum { BS_PERF_CLEAN, BS_PERF_ROLL, BS_PERF_CHOP, BS_PERF_REVERSE, BS_PERF_GLITCH, BS_PERF_DESTROY, BS_PERF_FREEZE,
-       BS_NPERF };
+       BS_PERF_TAPESTOP, BS_NPERF };
 extern const char *const bs_perf_name[BS_NPERF];
 enum { BS_LOCK_OFF, BS_LOCK_LAYER, BS_LOCK_SEPARATE }; /* BREAK-LOCK */
-enum { BS_Q_NOW, BS_Q_BEAT, BS_Q_BAR, BS_Q_2BAR, BS_Q_4BAR };
+enum { BS_Q_NOW, BS_Q_BEAT, BS_Q_BAR, BS_Q_2BAR, BS_Q_4BAR, BS_Q_PHRASE }; /* PHRASE: the end of the phrase (0.5) */
+/* (0.5) the fills: ROLL (the break chops up, the snare rolls in the second half), SNARE BUILD (the snare on every
+ * 16th, building; the kick out), DROP OUT (break, kick, snare and ghosts out, the hats left; the impact on the
+ * drop), CHOP (the break cut up hard, ratchets and reverses; the drums as they are) */
+enum { BS_FILL_ROLL, BS_FILL_BUILD, BS_FILL_DROP, BS_FILL_CHOP, BS_NFILLS };
+extern const char *const bs_fill_name[BS_NFILLS];
+/* (0.5) FORM: the variations A-D (the patterns P1-P4) bar by bar on the global 4-bar grid */
+#define BS_NFORMS 6
+extern const char *const bs_form_name[BS_NFORMS];  /* OFF, A B A C, A A A B, A B A B, A B C D, A A B B */
+extern const uint8_t bs_form[BS_NFORMS][4];
 
 /* the rhythm graph's parameters (Clean <-> Rolling <-> Chopped <-> Glitched) */
 enum { BS_R_CHOP, BS_R_RATCH, BS_R_REV, BS_R_STUTTER, BS_R_GHOST, BS_R_HATS, BS_R_GATE, BS_R_PITCH, BS_NRPARAMS };
@@ -70,6 +79,9 @@ typedef struct {
     /* performance */
     uint8_t perf, perf_slice, roll_div; /* the held mode; ROLL's slice; 1 = 1/16, 3 = 1/32 */
     uint8_t fill_on, fill_bars, fill_pending, return_pending, breaklock, anchors;
+    uint8_t fill_type, fill_sent;      /* (0.5) BS_FILL_*; the link's FILL_BEGIN sent */
+    uint8_t form, phrase;              /* (0.5) the FORM (0 off); the phrase in bars (4, 8, 16) */
+    float tape;                        /* (0.5) TAPE STOP: the speed, 1 .. 0 */
     uint32_t fill_start, fill_end;     /* abs steps */
     float energy;                      /* 0..1: fill intensity, ghost density */
     uint8_t cur_slice_cls;             /* the class of the break slice of the step being evaluated */
@@ -122,6 +134,10 @@ void bs_cmd_live_drum(bs_engine_t *e, int track, float vel);
 void bs_cmd_mute(bs_engine_t *e, int track, int toggle_solo);
 void bs_cmd_panic(bs_engine_t *e);
 void bs_midi_clock_in(bs_engine_t *e, uint32_t t24);  /* following an external clock */
+/* (0.5) a fill of a type (BS_FILL_*), 1 or 2 bars: from the next bar, or (at_phrase_end) in the phrase's last bars */
+void bs_cmd_fill_ex(bs_engine_t *e, int bars, int type, int at_phrase_end);
+void bs_cmd_pattern_q(bs_engine_t *e, int p, int quant); /* at the next bar, or with BS_Q_PHRASE the phrase's end */
+void bs_cmd_form(bs_engine_t *e, int form);               /* FORM from the next bar (0: off) */
 
 /* ---- main-loop edits (they change patterns in place; the lock hook guards bulk changes) ---- */
 void bs_set_lock_hooks(uint32_t (*lock)(void), void (*unlock)(uint32_t));
@@ -143,3 +159,20 @@ void bs_fx_update(bs_engine_t *e);                           /* after a change o
 void bs_snap(bs_engine_t *e);                                /* BREAK and KIT to their nearest nodes */
 const char *bs_kit_step(bs_engine_t *e, int dir);            /* KIT to the next / previous node; its name */
 int bs_load_bank(bs_engine_t *e, const uint8_t *bank, uint32_t len);
+
+/* ---- (0.5) the sequencer's smart help (main loop; the pattern edited in place under the lock hook) ---- */
+void bs_set_phrase(bs_engine_t *e, int bars);               /* 4, 8 or 16 */
+uint32_t bs_phrase_bar(const bs_engine_t *e);               /* the bar playing, within the phrase (0 ..) */
+int bs_form_part(const bs_engine_t *e, uint32_t bar);       /* the variation (pattern) FORM plays in a bar, or -1 */
+/* DENSITY: one step more (dir > 0: the most important empty one: downbeats, then 8ths, then 16ths) or less (dir < 0:
+ * the least important: 16ths and ghosts first, the downbeat last) on a track of the current pattern; -1: none left */
+int bs_density_step(bs_engine_t *e, int track, int dir);
+/* HUMANIZE: each on step's velocity and microtiming set a little off its grid value (amount 0..1, deterministic:
+ * the same amount gives the same pattern; 0 puts the steps back on the grid) */
+void bs_humanize(bs_engine_t *e, int track, float amount);
+void bs_mutate_track(bs_engine_t *e, int track, float amount, uint32_t seed); /* BREAK: bs_mutate; drums: moves hits */
+/* RECORD: a hit on a track now, written into the step it is nearest to (quantized to the 16th) and played; data =
+ * the slice on BREAK. Returns the step written, or -1 (not playing: only played) */
+int bs_record(bs_engine_t *e, int track, float vel, int data);
+void bs_erase_step(bs_engine_t *e, int track, int step);
+void bs_erase_track(bs_engine_t *e, int track);

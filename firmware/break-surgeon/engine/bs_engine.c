@@ -3,9 +3,13 @@
 #include "bs_engine.h"
 
 const char *const bs_track_name[BS_NTRACKS] = {"BREAK", "KICK", "SNARE", "GHOST", "HATS", "PERC", "IMPACT"};
-const char *const bs_perf_name[BS_NPERF] = {"CLEAN", "ROLL", "CHOP", "REVERSE", "GLITCH", "DESTROY", "FREEZE"};
+const char *const bs_perf_name[BS_NPERF] = {"CLEAN", "ROLL", "CHOP", "REVERSE", "GLITCH", "DESTROY", "FREEZE",
+                                            "TAPE STOP"};
+const char *const bs_fill_name[BS_NFILLS] = {"ROLL", "SNARE BUILD", "DROP OUT", "CHOP"};
+const char *const bs_form_name[BS_NFORMS] = {"OFF", "A B A C", "A A A B", "A B A B", "A B C D", "A A B B"};
+const uint8_t bs_form[BS_NFORMS][4] = {{0, 0, 0, 0}, {0, 1, 0, 2}, {0, 0, 0, 1}, {0, 1, 0, 1}, {0, 1, 2, 3}, {0, 0, 1, 1}};
 
-enum { C_PLAY, C_BPM, C_PERF, C_FILL, C_RETURN, C_PATTERN, C_SCENE, C_SLICE, C_DRUM, C_MUTE, C_PANIC };
+enum { C_PLAY, C_BPM, C_PERF, C_FILL, C_RETURN, C_PATTERN, C_SCENE, C_SLICE, C_DRUM, C_MUTE, C_PANIC, C_FORM };
 
 static uint32_t nolock(void) { return 0; }
 static void nounlock(uint32_t f) { (void)f; }
@@ -395,7 +399,7 @@ void bs_scene_store(bs_engine_t *e, int s)
 static uint32_t next_boundary(const bs_engine_t *e, int quant)
 {
     static const uint32_t Q[5] = {1u, 4u, 16u, 32u, 64u};
-    uint32_t q = Q[quant < 0 || quant > 4 ? 2 : quant];
+    uint32_t q = quant == BS_Q_PHRASE ? 16u * (e->phrase ? e->phrase : 4u) : Q[quant < 0 || quant > 4 ? 2 : quant];
     uint32_t a = e->clock.running ? e->clock.abs_step + 2u : 0u; /* +2: past the step already queued */
     return (a + q - 1u) / q * q;
 }
@@ -430,6 +434,23 @@ static void on_step(void *ctx, uint32_t abs, uint32_t off)
     bs_engine_t *e = (bs_engine_t *)ctx;
     (void)off;
     if (e->fill_on && !js_before(abs, e->fill_end + 1u)) e->fill_on = 0;
+    /* (0.5) the trig conditions' fill flag, for the step evaluated next */
+    e->seq.fill = (uint8_t)(e->fill_on && !js_before(abs + 1u, e->fill_start) && js_before(abs + 1u, e->fill_end));
+    /* the link's FILL_BEGIN in the bar before the fill (Abyss starts its fill at its next bar) */
+    if (e->fill_on && !e->fill_sent && !js_before(abs + 4u, e->fill_start)) {
+        uint32_t pk = jl_cc(&e->link, JL_CC_FILL_BEGIN, e->fill_bars);
+        send(e, &pk, 1);
+        e->fill_sent = 1;
+    }
+    /* (0.5) FORM: the bar's variation, switched as a pattern change at the bar (unless a scene lands there) */
+    if (e->form && ((abs + 1u) & 15u) == 0u && !(abs + 1u == e->pending_at && e->scene_pending >= 0)) {
+        uint8_t p = bs_form[e->form % BS_NFORMS][((abs + 1u) >> 4) & 3u];
+        if (p != e->cur_pat) {
+            e->cur_pat = e->next_pat = p;
+            e->seq.pat = &e->pat[p];
+            js_seq_reset(&e->seq);
+        }
+    }
     /* switches land at the start of the step before the boundary: the boundary step is evaluated after it */
     if (abs + 1u == e->pending_at) {
         if (e->scene_pending >= 0)
@@ -482,11 +503,17 @@ static int xform(void *ctx, uint32_t t, uint32_t abs, js_step_t *st)
     case BS_PERF_DESTROY: chop = 0.9f, ratch = 0.7f, stut = 0.6f, rev = jo_maxf(rev, 0.3f); break;
     default: break;
     }
-    if (in_fill) { /* intensity rises through the fill, scaled by ENERGY */
+    if (in_fill && e->fill_type == BS_FILL_ROLL) { /* intensity rises through the fill, scaled by ENERGY */
         float k = 0.3f + 0.7f * e->energy;
         chop = jo_maxf(chop, k * (0.25f + 0.6f * prog));
         ratch = jo_maxf(ratch, k * prog * prog);
     }
+    if (in_fill && e->fill_type == BS_FILL_CHOP) { /* cut up hard from the start */
+        chop = jo_maxf(chop, 0.85f), ratch = jo_maxf(ratch, 0.35f + 0.4f * prog), rev = jo_maxf(rev, 0.25f);
+        anchor = 0;
+    }
+    if (in_fill && e->fill_type == BS_FILL_DROP && t != BS_T_HATS && t != BS_T_IMPACT && t != BS_T_PERC) return 0;
+    if (e->perf == BS_PERF_TAPESTOP && t != BS_T_BREAK) return 0; /* the drums stop; the break slows down */
     switch (t) {
     case BS_T_BREAK: {
         uint32_t h = js_hash(seed, abs, 0xB4EAu, 1u);
@@ -519,13 +546,20 @@ static int xform(void *ctx, uint32_t t, uint32_t abs, js_step_t *st)
         int cls_here = e->cur_eval_step == abs && e->cur_slice_cls == want;
         if (e->breaklock == BS_LOCK_SEPARATE && cls_here && (st->flags & JS_ON)) return 0;
         if (e->breaklock == BS_LOCK_LAYER && cls_here && !(st->flags & JS_ON)) st->flags = JS_ON, st->vel = 92;
-        if (in_fill && t == BS_T_SNARE && prog >= 0.5f) { /* the roll: the fill's second half, building */
+        if (in_fill && e->fill_type == BS_FILL_BUILD) { /* the snare on every 16th, building; the kick out */
+            if (t == BS_T_KICK) return abs == e->fill_start;
+            st->flags = JS_ON;
+            st->vel = (uint8_t)(40.0f + 84.0f * prog);
+            st->ratch = (uint8_t)(prog > 0.85f ? 3 : prog > 0.7f ? 1 : 0);
+            return 1;
+        }
+        if (in_fill && e->fill_type == BS_FILL_ROLL && t == BS_T_SNARE && prog >= 0.5f) { /* the roll: the second half */
             float q = (prog - 0.5f) * 2.0f;
             st->flags = JS_ON;
             st->vel = (uint8_t)(48.0f + 74.0f * q);
             st->ratch = (uint8_t)(q > 0.75f ? 3 : q > 0.4f ? 1 : 0);
         }
-        if (in_fill && t == BS_T_KICK && prog > 0.75f && pos != 0u) return 0; /* a gap before the drop */
+        if (in_fill && e->fill_type == BS_FILL_ROLL && t == BS_T_KICK && prog > 0.75f && pos != 0u) return 0; /* a gap before the drop */
         return 1;
     }
     case BS_T_GHOST:
@@ -573,6 +607,7 @@ static void fire_(bs_engine_t *e, const js_event_t *ev)
     float vel = (float)ev->vel * (1.0f / 127.0f);
     uint32_t pk[2], np;
     e->events_fired++;
+    if (e->perf == BS_PERF_TAPESTOP && e->tape < 0.05f) return; /* stopped */
     if (ev->nhits > 1u) vel *= 0.6f + 0.4f * (float)(ev->hit + 1u) / (float)ev->nhits; /* rolls crescendo */
     if (ev->track == BS_T_BREAK) {
         int tune = locki(ev, BS_LK_TUNE), loop = locki(ev, BS_LK_LOOP);
@@ -668,6 +703,144 @@ void bs_init(bs_engine_t *e, int16_t *test_pcm, const uint8_t *bank, uint32_t ba
     jf_drum_init(&e->bus);
     jl_init(&e->link, 15);
     e->pending_at = 0xFFFFFFFFu;
+    e->tape = 1.0f;
+    bs_set_phrase(e, 4);
+}
+
+/* ------------------------------------------------------------ (0.5) help --- */
+void bs_set_phrase(bs_engine_t *e, int bars)
+{
+    e->phrase = (uint8_t)(bars >= 16 ? 16 : bars >= 8 ? 8 : 4);
+    e->seq.phrase = e->phrase;
+}
+
+uint32_t bs_phrase_bar(const bs_engine_t *e)
+{
+    return e->clock.running ? (e->clock.abs_step >> 4) % (e->phrase ? e->phrase : 4u) : 0u;
+}
+
+int bs_form_part(const bs_engine_t *e, uint32_t bar)
+{
+    return e->form ? (int)bs_form[e->form % BS_NFORMS][bar & 3u] : -1;
+}
+
+/* a step's weight for DENSITY: the downbeat most, then the beats, the 8ths, the 16ths; ties broken by a hash */
+static uint32_t step_weight(uint32_t i, uint32_t t)
+{
+    uint32_t pos = i & 15u;
+    uint32_t w = pos == 0u ? 4000u : (pos & 3u) == 0u ? 3000u : (pos & 1u) == 0u ? 2000u : 1000u;
+    return w + js_hash(0xD3u, i, t, 7u) % 997u;
+}
+
+int bs_density_step(bs_engine_t *e, int track, int dir)
+{
+    js_track_t *tr = &e->pat[e->cur_pat].t[(uint32_t)track % BS_NTRACKS];
+    uint32_t i, len = tr->len ? tr->len : 16u, best = 0xFFFFFFFFu, bw = 0, f;
+    for (i = 0; i < len; i++) {
+        int on = (tr->s[i].flags & JS_ON) != 0;
+        uint32_t w = step_weight(i, (uint32_t)track);
+        if (dir > 0 && !on && (best == 0xFFFFFFFFu || w > bw)) best = i, bw = w;
+        if (dir < 0 && on && (best == 0xFFFFFFFFu || w < bw)) best = i, bw = w;
+    }
+    if (best == 0xFFFFFFFFu) return -1;
+    f = lock_fn();
+    if (dir > 0) {
+        js_step_t *st = &tr->s[best];
+        uint32_t pos = best & 15u;
+        st->flags |= JS_ON;
+        st->vel = (uint8_t)(pos == 0u ? 122 : (pos & 3u) == 0u ? 100 : (pos & 1u) == 0u ? 76 : 52);
+        if (track == BS_T_BREAK) st->data = (uint8_t)(best % (e->slices ? e->slices : 16u));
+    } else
+        tr->s[best].flags &= (uint8_t)~JS_ON;
+    unlock_fn(f);
+    return (int)best;
+}
+
+void bs_humanize(bs_engine_t *e, int track, float amount)
+{
+    static const uint8_t VCLASS[4] = {38, 60, 100, 122}; /* the grid velocities (ghost, soft, on, accent) */
+    js_track_t *tr = &e->pat[e->cur_pat].t[(uint32_t)track % BS_NTRACKS];
+    uint32_t i, k, len = tr->len ? tr->len : 16u, f;
+    amount = jo_clampf(amount, 0.0f, 1.0f);
+    f = lock_fn();
+    for (i = 0; i < len; i++) {
+        js_step_t *st = &tr->s[i];
+        uint32_t h = js_hash(0x4855u, i, (uint32_t)track, 3u);
+        uint8_t base = VCLASS[0];
+        float bi = (float)(int32_t)(h % 2001u) * 0.001f - 1.0f, bj = (float)(int32_t)((h >> 11) % 2001u) * 0.001f - 1.0f;
+        if (!(st->flags & JS_ON)) continue;
+        for (k = 1; k < 4u; k++) /* back to the nearest grid velocity, so the offset never accumulates */
+            if (jo_absf((float)st->vel - (float)VCLASS[k]) < jo_absf((float)st->vel - (float)base)) base = VCLASS[k];
+        st->vel = (uint8_t)jo_clampi((int32_t)base + (int32_t)(10.0f * amount * bi), 1, 127);
+        st->micro = (int8_t)(int32_t)(12.0f * amount * bj);
+    }
+    unlock_fn(f);
+}
+
+void bs_mutate_track(bs_engine_t *e, int track, float amount, uint32_t seed)
+{
+    js_track_t *tr;
+    uint32_t i, len, f;
+    if (track == BS_T_BREAK) { bs_mutate(e, amount, seed); return; }
+    tr = &e->pat[e->cur_pat].t[(uint32_t)track % BS_NTRACKS];
+    len = tr->len ? tr->len : 16u;
+    amount = jo_clampf(amount, 0.0f, 1.0f);
+    f = lock_fn();
+    for (i = 0; i < len; i++) { /* a hit moves a 16th earlier or later into an empty step; the beats stay */
+        uint32_t h = js_hash(seed, i, (uint32_t)track, 21u), j;
+        if (!(tr->s[i].flags & JS_ON) || (e->anchors && (i & 3u) == 0u) || unit(h) >= amount * 0.6f) continue;
+        j = (i + ((h >> 3) & 1u ? 1u : len - 1u)) % len;
+        if (tr->s[j].flags & JS_ON || (e->anchors && (j & 3u) == 0u)) continue;
+        tr->s[j] = tr->s[i];
+        tr->s[j].data = track == BS_T_BREAK ? tr->s[i].data : (uint8_t)j;
+        js_step_clear(&tr->s[i]);
+        tr->s[i].data = (uint8_t)i;
+    }
+    unlock_fn(f);
+}
+
+int bs_record(bs_engine_t *e, int track, float vel, int data)
+{
+    js_track_t *tr = &e->pat[e->cur_pat].t[(uint32_t)track % BS_NTRACKS];
+    uint32_t len = tr->len ? tr->len : 16u, idx, f;
+    int was_on, late;
+    if (!e->clock.running) {
+        if (track == BS_T_BREAK) bs_cmd_live_slice(e, data, vel);
+        else bs_cmd_live_drum(e, track, vel);
+        return -1;
+    }
+    /* the step nearest to now: the one the sequencer evaluated last (it evaluates each step half a step early, so
+     * in a step's first half that is this step, in its second half the next) */
+    idx = ((uint32_t)e->seq.pos[(uint32_t)track % BS_NTRACKS] + len - 1u) % len;
+    late = e->clock.phase >= 0x80000000u;
+    f = lock_fn();
+    was_on = (tr->s[idx].flags & JS_ON) != 0;
+    tr->s[idx].flags |= JS_ON;
+    tr->s[idx].vel = (uint8_t)jo_clampi((int32_t)(vel * 127.0f + 0.5f), 1, 127);
+    tr->s[idx].micro = 0;
+    tr->s[idx].data = (uint8_t)(track == BS_T_BREAK ? (uint32_t)data % (e->slices ? e->slices : 16u) : idx);
+    unlock_fn(f);
+    /* heard now; a step already queued and on (the next one, in the second half) sounds by itself */
+    if (!(late && was_on)) {
+        if (track == BS_T_BREAK) bs_cmd_live_slice(e, data, vel);
+        else bs_cmd_live_drum(e, track, vel);
+    }
+    return (int)idx;
+}
+
+void bs_erase_step(bs_engine_t *e, int track, int step)
+{
+    js_step_t *st = &e->pat[e->cur_pat].t[(uint32_t)track % BS_NTRACKS].s[(uint32_t)step % JS_MAXSTEPS];
+    uint32_t f = lock_fn();
+    js_step_clear(st);
+    st->data = (uint8_t)((uint32_t)step % (track == BS_T_BREAK && e->slices ? e->slices : JS_MAXSTEPS));
+    unlock_fn(f);
+}
+
+void bs_erase_track(bs_engine_t *e, int track)
+{
+    uint32_t i;
+    for (i = 0; i < JS_MAXSTEPS; i++) bs_erase_step(e, track, (int)i);
 }
 
 /* SNAP: the BREAK and KIT knobs to their nearest nodes; the kit one node along its path (PERFORM's PRESET and ALGO,
@@ -694,6 +867,12 @@ void bs_cmd_play(bs_engine_t *e, int on) { cmd(e, C_PLAY, (uint8_t)(on != 0), 0,
 void bs_cmd_bpm(bs_engine_t *e, float bpm) { cmd(e, C_BPM, 0, 0, bpm); }
 void bs_cmd_perf(bs_engine_t *e, int m) { cmd(e, C_PERF, (uint8_t)m, 0, 0.0f); }
 void bs_cmd_fill(bs_engine_t *e, int bars) { cmd(e, C_FILL, (uint8_t)bars, 0, 0.0f); }
+void bs_cmd_fill_ex(bs_engine_t *e, int bars, int type, int at_end)
+{
+    cmd(e, C_FILL, (uint8_t)bars, (uint8_t)((type % BS_NFILLS) | (at_end ? 0x80 : 0)), 0.0f);
+}
+void bs_cmd_pattern_q(bs_engine_t *e, int p, int quant) { cmd(e, C_PATTERN, (uint8_t)p, (uint8_t)quant, 0.0f); }
+void bs_cmd_form(bs_engine_t *e, int form) { cmd(e, C_FORM, (uint8_t)form, 0, 0.0f); }
 void bs_cmd_return(bs_engine_t *e) { cmd(e, C_RETURN, 0, 0, 0.0f); }
 void bs_cmd_pattern(bs_engine_t *e, int p) { cmd(e, C_PATTERN, (uint8_t)p, 0, 0.0f); }
 void bs_cmd_scene(bs_engine_t *e, int s, int quant) { cmd(e, C_SCENE, (uint8_t)s, (uint8_t)quant, 0.0f); }
@@ -741,17 +920,30 @@ static void do_cmd(bs_engine_t *e, const jo_cmd_t *c)
             if (c->a == BS_PERF_FREEZE) jb_microloop(&e->player, 0.004f * (float)e->breaks[e->cur_break].rate);
         }
         if (e->perf == BS_PERF_FREEZE && c->a != BS_PERF_FREEZE) jb_microloop(&e->player, 0.0f);
+        if (c->a != BS_PERF_TAPESTOP && e->tape < 1.0f) { /* back to speed */
+            for (i = 0; i < 2u; i++) if (e->tape > 0.001f) e->player.v[i].rate /= e->tape;
+            e->tape = 1.0f;
+        }
         e->perf = c->a < BS_NPERF ? c->a : 0u;
         break;
+    case C_FORM: e->form = (uint8_t)(c->a % BS_NFORMS); break;
     case C_FILL:
-        e->fill_start = next_boundary(e, BS_Q_BAR);
         e->fill_bars = (uint8_t)(c->a == 4 ? 4 : c->a == 2 ? 2 : 1);
+        e->fill_type = (uint8_t)((c->b & 0x7Fu) % BS_NFILLS);
+        e->fill_start = next_boundary(e, BS_Q_BAR);
+        if (c->b & 0x80u) { /* (0.5) in the phrase's last bar(s): this phrase's, or the next one's when too late */
+            uint32_t ph = 16u * (e->phrase ? e->phrase : 4u), a = e->clock.running ? e->clock.abs_step + 2u : 0u;
+            uint32_t at = (a / ph + 1u) * ph - 16u * e->fill_bars;
+            if (js_before(at, a)) at += ph;
+            e->fill_start = at;
+        }
         e->fill_end = e->fill_start + 16u * e->fill_bars;
         e->fill_on = 1;
-        {
-            uint32_t n = 1;
+        e->fill_sent = 0; /* FILL_BEGIN goes out in the bar before (on_step) */
+        if (!e->clock.running) { /* (stopped: at once, as before) */
             pk[0] = jl_cc(&e->link, JL_CC_FILL_BEGIN, e->fill_bars);
-            send(e, pk, n);
+            send(e, pk, 1);
+            e->fill_sent = 1;
         }
         break;
     case C_RETURN:
@@ -763,7 +955,7 @@ static void do_cmd(bs_engine_t *e, const jo_cmd_t *c)
         break;
     case C_PATTERN:
         e->next_pat = c->a % BS_NPATTERNS;
-        e->pending_at = next_boundary(e, BS_Q_BAR);
+        e->pending_at = next_boundary(e, c->b == BS_Q_PHRASE ? BS_Q_PHRASE : BS_Q_BAR);
         if (!e->clock.running) { e->cur_pat = e->next_pat; e->seq.pat = &e->pat[e->cur_pat]; }
         break;
     case C_SCENE:
@@ -776,7 +968,8 @@ static void do_cmd(bs_engine_t *e, const jo_cmd_t *c)
                 e->scene_pending = (int8_t)c->a;
                 e->pending_at = next_boundary(e, c->b);
             }
-            send(e, pk, jl_scene(&e->link, c->a, c->b, pk));
+            /* (the link knows bars up to 4: a phrase's end goes out as 4 bars) */
+            send(e, pk, jl_scene(&e->link, c->a, c->b == BS_Q_PHRASE ? BS_Q_4BAR : c->b, pk));
         }
         break;
     case C_SLICE: jb_play(&e->player, c->a, c->f, 0, 0.0f); break;
@@ -832,6 +1025,13 @@ void bs_render_float(bs_engine_t *e, float *buf, uint32_t n)
     while (jo_cmdq_pop(&e->cmd, &c)) do_cmd(e, &c);
     /* the break follows the tempo by repitching (the classic jungle way) */
     e->player.tempo_ratio = e->tempo_sync && b->bpm > 0.0f ? e->clock.bpm / b->bpm : 1.0f;
+    if (e->perf == BS_PERF_TAPESTOP) { /* (0.5) TAPE STOP: the break slows to a stop over 0.7 s */
+        float nt = jo_maxf(e->tape - (float)n * (1.0f / (0.7f * JO_SR)), 0.0f);
+        for (i = 0; i < 2u; i++)
+            if (e->tape > 0.001f) e->player.v[i].rate *= nt / e->tape;
+        e->tape = nt;
+        e->player.tempo_ratio *= jo_maxf(nt, 0.001f);
+    }
     h.on_step = on_step;
     h.on_clock_out = on_clock_out;
     h.transform = xform;

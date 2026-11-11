@@ -1,47 +1,200 @@
-# Break Surgeon in fm1-base's host simulator: the whole app, scripted (tests/host/README.md)
+# Break Surgeon in fm1-base's host simulator: the whole app, scripted (tests/host/README.md). 0.5: the sequencer
+# first, the live tools on held layers (docs/architecture/control-maps.md)
 wait 600
 shot bs_splash.png
 wav bs_smoke.wav
 tap PLAY
 wait 2500
-shot bs_perform_playing.png
-# SEL held: the strip and the page show the SEL layer
+# the main page: the selected track (BREAK) big, every track as a mini row
+shot bs_main.png
+# KICK (black key 2): a step on, a held step edited (velocity, a condition), the popup
+tapkey b1
+tapkey w3
+key w6 down
+turn K1 -10
+turn ALGO 3
+wait 200
+shot bs_main_step.png
+key w6 up
+wait 300
+# a groove from the library (ALGO), on the overview
+tap SEQ
+turn ALGO 1
+wait 400
+shot bs_overview.png
+turn K1 -1
+turn K2 4
+turn K3 2
+turn K4 1
+turn K4 -1
+turn K1 1
+turn K2 -4
+# SEL held: the combinations
 press SEL
 wait 200
 shot bs_sel.png
 release SEL
-wait 200
-# a fill (ENV), then hold GLITCH (white key 5) for a bar, then RETURN (REC)
+# the FX layer: every performance FX held in turn
+press FX
+wait 150
+shot bs_fx_layer.png
+key w0 down
+wait 500
+key w0 up
+key w1 down
+wait 500
+key w1 up
+key w2 down
+wait 500
+key w2 up
+key w3 down
+wait 500
+key w3 up
+key w4 down
+wait 500
+key w4 up
+key w5 down
+wait 500
+key w5 up
+key w6 down
+wait 500
+key w6 up
+key w7 down
+wait 900
+shot bs_fx_tape.png
+key w7 up
+turn K4 2
+turn K4 -2
+release FX
+wait 300
+# the FILL layer: each fill type, K1 the length; ENV tapped: a fill at the phrase's end
+press ENV
+wait 150
+shot bs_fill_layer.png
+turn K1 1
+turn K1 -1
+tapkey w0
+wait 1500
+tapkey w1
+wait 1500
+tapkey w2
+wait 1500
+tapkey w3
+release ENV
+wait 1500
 tap ENV
 wait 2000
-key w4 down
-wait 1400
-key w4 up
-tap REC
-wait 2000
-# the SEQUENCE page: track KICK (black key 1), step 3 on, held step 3 with VEL up
-tap SEQ
+# the VARY layer: variations, every FORM, DENSITY, HUMANIZE, MUTATE amount, GHOSTS
+tap HOME
 tapkey b1
-tapkey w3
-key w5 down
-turn K1 -10
-key w5 up
+press LFO
+wait 150
+shot bs_vary_layer.png
+tapkey w1
+wait 1500
+tapkey w0
+tapkey w9
+wait 200
+tapkey w10
+tapkey w11
+tapkey w12
+tapkey w13
+tapkey w8
+tapkey w9
+turn K1 3
+turn K1 -2
+turn K2 4
+turn K3 2
+turn K4 2
+wait 200
+shot bs_vary_turned.png
+release LFO
+wait 5600
+# LFO tapped: MUTATE the track; SEL + LFO: UNDO, SEL + ENV: REDO
+tap LFO
 wait 300
-shot bs_seq.png
+press SEL
+tap LFO
+tap ENV
+tap LFO
+release SEL
+wait 300
+# REC: record the KICK live (the keys soft to hard), then the BREAK's slices
+tap REC
+wait 200
+tapkey w15
+wait 230
+tapkey w2
+wait 230
+tapkey w9
+wait 400
+shot bs_rec.png
+tapkey b0
+tapkey w0
+wait 230
+tapkey w4
+wait 230
+tap REC
+wait 300
+# the ERASE layer: hold REC, a step and a track cleared
+press REC
+wait 150
+shot bs_erase_layer.png
+tapkey w0
+tapkey b3
+release REC
+wait 300
+# the STORE layer: hold SAVE, scene 7 stored
+press SAVE
+wait 150
+shot bs_store_layer.png
+tapkey w6
+release SAVE
+wait 300
+# the SONG layer: a scene, a pattern, a mute and back
+press ARP
+wait 150
+shot bs_song_layer.png
+tapkey w4
+tapkey w9
+tapkey b4
+tapkey b4
+tapkey w8
+release ARP
+wait 2500
+# the SONG page: QUANT through all (PHRASE last), PHRASE 8, a FORM, ANCHORS, LINK KICKS
+tap ARP
+turn K1 3
+turn K2 1
+turn K3 1
+turn K4 1
+turn K4 -1
+turn ALGO -1
+turn ALGO 1
+turn PRESET -1
+turn PRESET 1
+wait 1500
+shot bs_song.png
+turn K3 -1
+turn K1 -3
+turn K2 -1
+# the SOUND page: the keys audition
 tap EDIT
+tapkey b1
+tapkey w12
 wait 300
 shot bs_sound_kick.png
 tapkey b0
+tapkey w3
 wait 300
 shot bs_sound_break.png
+tapkey b5
+turn ALGO 1
+turn ALGO -1
 tap FX
 turn ALGO 2
 wait 300
 shot bs_fx.png
-tap ARP
-tapkey w4
-wait 2500
-shot bs_scene.png
 tap GLO
 wait 300
 shot bs_system.png
@@ -56,172 +209,166 @@ wait 200
 expect store_writes >0
 reboot
 wait 600
-tap SEQ
+tap HOME
 wait 300
 shot bs_after_reboot.png
 
-# the tour: every page, plain and with SEL / SAVE held (tools/build_all.sh fails on any text cut to fit)
+# the tour: every page, plain and in every layer, every track, both step pages (tools/build_all.sh fails on any
+# text cut to fit)
 tap PLAY
 wait 400
 tap HOME
-wait 150
+wait 120
 press SEL
-wait 150
+wait 120
 release SEL
 press SAVE
-wait 150
+wait 120
 release SAVE
-wait 100
+press REC
+wait 120
+release REC
+press ENV
+wait 120
+release ENV
+press LFO
+wait 120
+release LFO
+press ARP
+wait 120
+release ARP
+press FX
+wait 120
+release FX
 tap SEQ
-wait 150
+wait 120
 press SEL
-wait 150
+wait 120
 release SEL
-press SAVE
-wait 150
-release SAVE
-wait 100
+press LFO
+wait 120
+release LFO
 tap EDIT
-wait 150
+wait 120
 press SEL
-wait 150
+wait 120
 release SEL
-press SAVE
-wait 150
-release SAVE
-wait 100
+press ARP
+wait 120
+release ARP
 tap FX
-wait 150
+wait 120
 press SEL
-wait 150
+wait 120
 release SEL
-press SAVE
-wait 150
-release SAVE
-wait 100
+press FX
+wait 120
+release FX
 tap ARP
-wait 150
+wait 120
 press SEL
-wait 150
+wait 120
 release SEL
-press SAVE
-wait 150
-release SAVE
-wait 100
 tap GLO
-wait 150
+wait 120
 press SEL
-wait 150
+wait 120
 release SEL
 press SAVE
-wait 150
+wait 120
 release SAVE
-wait 100
-tap SEQ
-tapkey b0
-wait 120
-tapkey b1
-wait 120
-tapkey b2
-wait 120
-tapkey b3
-wait 120
-tapkey b4
-wait 120
-tapkey b5
-wait 120
-tapkey b6
-wait 120
-tap EDIT
-tapkey b0
-wait 120
-tapkey b1
-wait 120
-tapkey b2
-wait 120
-tapkey b3
-wait 120
-tapkey b4
-wait 120
-tapkey b5
-wait 120
-tapkey b6
-wait 120
-tap EDIT
-tapkey b5
-turn ALGO 1
-wait 100
-turn ALGO 1
-wait 100
-turn ALGO 1
-wait 100
-tap FX
-turn ALGO 1
-wait 120
-turn ALGO 1
-wait 120
-turn ALGO 1
-wait 120
-turn ALGO 1
-wait 120
-turn ALGO 1
-wait 120
 tap HOME
-turn ALGO 1
+tapkey b0
 wait 120
-turn ALGO 1
+tapkey b1
 wait 120
-turn ALGO 1
+tapkey b2
 wait 120
-turn ALGO 1
+tapkey b3
 wait 120
-turn ALGO 1
+tapkey b4
 wait 120
-turn K1 100
-wait 150
-turn K1 -100
-tap SEQ
+tapkey b5
+wait 120
+tapkey b6
+wait 120
+tap OCT+
+wait 120
+tap OCT-
 key w2 down
-wait 150
+press SEL
+turn K1 1
+wait 120
+release SEL
 key w2 up
-tap PLAY
-wait 300
-# (0.4) the groove library: SEQUENCE, ALGO through every groove (the names fit), then UNDO
-tap PLAY
+tap EDIT
+tapkey b0
+wait 120
+tapkey b1
+wait 120
+tapkey b2
+wait 120
+tapkey b3
+wait 120
+tapkey b4
+wait 120
+tapkey b5
+wait 120
+tapkey b6
+wait 120
 tap SEQ
-wait 200
 turn ALGO 1
-wait 300
-shot bs_groove.png
+wait 120
 turn ALGO 1
-wait 300
+wait 120
 turn ALGO 1
-wait 300
+wait 120
 turn ALGO 1
-wait 300
+wait 120
 turn ALGO 1
-wait 300
+wait 120
 turn ALGO 1
-wait 300
+wait 120
 turn ALGO 1
-wait 300
+wait 120
 turn ALGO 1
-wait 300
+wait 120
 turn ALGO 1
-wait 300
+wait 120
 turn ALGO 1
-wait 300
+wait 120
 turn ALGO 1
-wait 300
+wait 120
 turn ALGO 1
-wait 300
+wait 120
 turn ALGO 1
-wait 300
-turn ALGO 1
-wait 300
+wait 120
 press SEL
 tap LFO
 release SEL
-wait 200
+tap HOME
+key w5 down
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO 1
+wait 120
+turn ALGO -10
+key w5 up
 tap PLAY
 wait 200
