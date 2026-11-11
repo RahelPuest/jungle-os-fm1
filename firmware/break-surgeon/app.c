@@ -12,7 +12,8 @@
 static bs_engine_t eng PLAT_POOL;
 static int16_t test_pcm[31200] PLAT_POOL;   /* the procedural test break at 22,059 Hz (jb_testbreak_frames) */
 static int16_t room_buf[JF_VERB_TOTAL] PLAT_POOL; /* DRUM PRESSURE's room: 32 KiB */
-static ju_stack_t undo PLAT_POOL;            /* (0.5) UNDO / REDO: 8 pattern snapshots, 23 KiB */
+static ju_stack_t undo PLAT_POOL;            /* (0.5) UNDO / REDO: 8 pattern snapshots, 27 KiB */
+static bs_dna_t dna PLAT_POOL;               /* (0.6) DNA: 16 genomes, 54 KiB */
 _Static_assert(sizeof test_pcm / 2u >= 31142u, "the test break fits");
 
 #define SET_MAGIC 0x32534253u               /* "SBS2" (0.5: the phrase, FORM, the fill length) */
@@ -23,7 +24,7 @@ typedef struct {
     uint8_t clock_src, link_ch, send_clock, send_kicks;
     uint8_t slices, tempo_sync, breaklock, anchors;
     uint8_t scene_quant, theme, link_usb_host, rsv;
-    uint8_t phrase, form, fill_bars, rsv2;   /* (0.5) */
+    uint8_t phrase, form, fill_bars, decay;  /* (0.5); (0.6) decay: TAPE DECAY 0 off, 1..20 (5 % steps) */
 } settings_t;
 static settings_t set;
 #define PAT_MAGIC 0x31544150u               /* "PAT1" */
@@ -34,13 +35,13 @@ _Static_assert(sizeof io <= 3840u, "a store object holds 3,840 bytes");
 static uint8_t dirty, load_report;          /* load_report: what was replaced by defaults at boot (bits) */
 
 /* (0.5) the pages: HOME the main page (the track big), SEQ the overview, EDIT SOUND, FX, ARP SONG, GLO SYSTEM */
-enum { PG_MAIN, PG_SEQ, PG_SOUND, PG_FX, PG_SONG, PG_SYSTEM, NPAGES };
-static const char *const PAGE_NAME[NPAGES] = {"MAIN", "OVERVIEW", "SOUND", "FX", "SONG", "SYSTEM"};
+enum { PG_MAIN, PG_SEQ, PG_SOUND, PG_FX, PG_SONG, PG_SYSTEM, PG_DNA, NPAGES }; /* (0.6) DNA: SEQ's second tap */
+static const char *const PAGE_NAME[NPAGES] = {"MAIN", "OVERVIEW", "SOUND", "FX", "SONG", "SYSTEM", "DNA"};
 static const char *const SCENE_NAME[BS_NSCENES] = {"INTRO", "BUILD", "DROP", "MUTATION", "VOID", "IMPACT", "SCENE 7", "SCENE 8"};
 static const char *const QUANT_NAME[6] = {"NOW", "BEAT", "BAR", "2 BAR", "4 BAR", "PHRASE"};
 /* (0.5) the held layers, in the order a held button wins */
-enum { L_NONE, L_SEL, L_STORE, L_ERASE, L_FILL, L_VARY, L_SONG, L_FX };
-static const char *const LAYER_NAME[8] = {"", "SEL", "STORE", "ERASE", "FILL", "VARY", "SONG", "FX"};
+enum { L_NONE, L_SEL, L_STORE, L_ERASE, L_FILL, L_VARY, L_SONG, L_FX, L_ROUTE, L_ENERGY }; /* (0.6) SEQ, HOME */
+static const char *const LAYER_NAME[10] = {"", "SEL", "STORE", "ERASE", "FILL", "VARY", "SONG", "FX", "ROUTE", "ENERGY"};
 static const char *const LOCK_NAME[3] = {"OFF", "LAYER", "SEPARATE"};
 
 static struct {
@@ -63,6 +64,12 @@ static struct {
     float humanize;                        /* VARY's HUMANIZE amount */
     uint32_t save_at;                      /* autosave: when (0 none) */
     uint8_t was_running;
+    /* (0.6) */
+    uint8_t route_target, route_latch;     /* ROUTE: 0 the selected track, 1 BREAK, 2 ALL; latch writes it */
+    uint8_t draw[JS_MAXSTEPS], draw_n;     /* ROUTE: the white keys pressed in order this hold */
+    uint8_t route_undone;                  /* ROUTE: this hold's undo snapshot taken */
+    int8_t cross_a;                        /* DNA: CROSS armed (-1: waiting for A), A (0..15), -2: off */
+    uint32_t last_bar;                     /* TAPE DECAY: the bar last faded */
 } ui;
 
 /* ------------------------------------------------------------------ MIDI --- */
@@ -84,6 +91,11 @@ static void midi_in_render(void)
     int port;
     while (plat_midi_in(&pkt, &port)) {
         uint32_t st = (pkt >> 8) & 0xFFu;
+        if ((st & 0xF0u) == 0xB0u) { /* (0.6) the link's ENERGY: followed, not sent back */
+            jl_event_t ev;
+            if (jl_decode(&eng.link, pkt, eng.ms, &ev) && ev.type == JL_EV_ENERGY) bs_follow_energy(&eng, (float)ev.a * (1.0f / 127.0f));
+            continue;
+        }
         if (st == 0xF8u) bs_midi_clock_in(&eng, midi_t24());
         else if (eng.clock.source == JS_CLK_MIDI && (st == 0xFAu || st == 0xFCu)) {
             if (st == 0xFAu) js_clock_midi_start(&eng.clock);
@@ -132,6 +144,7 @@ static void settings_defaults(void)
     set.phrase = 4;
     set.form = 0;
     set.fill_bars = 1;
+    set.decay = 0;
 }
 
 static int load_rec(uint32_t obj, uint32_t magic, void *dst, uint32_t len)
@@ -148,6 +161,14 @@ static int save_rec(uint32_t obj, uint32_t magic, const void *src, uint32_t len)
     memcpy(io.p, src, len);
     jo_rec_seal(&io.h, magic, 1, io.p, len);
     return plat_store_save(obj, &io, sizeof io.h + len);
+}
+
+/* (0.6) TAPE DECAY from the setting: off, or 5 % .. 100 % (a pass loses 10 .. 64 / 256 of a step's velocity) */
+static void decay_apply(void)
+{
+    if (set.decay > 20u) set.decay = 20u;
+    eng.decay_on = set.decay != 0;
+    eng.decay_amt = (uint8_t)(8u + (uint32_t)set.decay * 56u / 20u);
 }
 
 static void apply_settings(void)
@@ -169,6 +190,7 @@ static void apply_settings(void)
     if (set.slices != 16) bs_set_slices(&eng, set.slices);
     bs_set_phrase(&eng, set.phrase);
     eng.form = set.form % BS_NFORMS;
+    decay_apply();
 }
 
 static void load_all(void)
@@ -346,6 +368,8 @@ void app_init(void)
     ui.ghost_density = 0.45f;
     ui.mutate_seed = 1;
     ju_init(&undo);
+    dna.playing = -1; /* (0.6) the tree starts when the DNA page opens */
+    ui.cross_a = -2;
 }
 
 void app_say(const char *a, const char *b)
@@ -369,12 +393,13 @@ void app_say(const char *a, const char *b)
 /* ---------------------------------------------------------------- undo --- */
 /* (0.5) every pattern-changing action takes a snapshot first (shared/seq/jo_undo.h); edits of one kind on one pattern
  * within 2 s are one snapshot (turning a knob, browsing grooves, tapping steps) */
-enum { U_STEP, U_STEPEDIT, U_TRACK, U_GROOVE, U_MUTATE, U_DENSITY, U_HUMANIZE, U_GHOSTS, U_RECORD, U_ERASE };
+enum { U_STEP, U_STEPEDIT, U_TRACK, U_GROOVE, U_MUTATE, U_DENSITY, U_HUMANIZE, U_GHOSTS, U_RECORD, U_ERASE,
+       U_LEVEL, U_ROUTE, U_DNA };
 static void undo_mark(uint8_t kind)
 {
     uint32_t now = plat_ms();
     if (ju_can_undo(&undo) && kind == ui.undo_kind && eng.cur_pat == ui.undo_slot && now - ui.undo_t < 2000u &&
-        kind != U_MUTATE && kind != U_ERASE && kind != U_RECORD) {
+        kind != U_MUTATE && kind != U_ERASE && kind != U_RECORD && kind != U_DNA) {
         ui.undo_t = now;
         return;
     }
@@ -418,15 +443,31 @@ static int layer(void)
     if (ui_held(in, B_LFO)) return L_VARY;
     if (ui_held(in, B_ARP)) return L_SONG;
     if (ui_held(in, B_FX)) return L_FX;
+    if (ui_held(in, B_SEQ)) return L_ROUTE;
+    if (ui_held(in, B_HOME)) return L_ENERGY;
     return L_NONE;
 }
 static void use_layer(int l)
 {
-    static const uint8_t LB[8] = {0, B_SEL, B_SAVE, B_REC, B_ENV, B_LFO, B_ARP, B_FX};
+    static const uint8_t LB[10] = {0, B_SEL, B_SAVE, B_REC, B_ENV, B_LFO, B_ARP, B_FX, B_SEQ, B_HOME};
     if (l) ui_use(&ui.in, LB[l]);
 }
 /* the keys are the steps on these pages (SOUND auditions; REC records) */
-static int keys_are_steps(void) { return ui.page != PG_SOUND && !ui.rec; }
+static int keys_are_steps(void) { return ui.page != PG_SOUND && ui.page != PG_DNA && !ui.rec; }
+/* (0.6) ROUTE's target tracks */
+static uint32_t route_mask(void)
+{
+    return ui.route_target == 2 ? (1u << BS_NTRACKS) - 1u : ui.route_target == 1 ? 1u << BS_T_BREAK : 1u << ui.track;
+}
+/* the route in force on a track (its live one over its own) */
+static uint8_t route_of(uint32_t t)
+{
+    return eng.seq.route_ovr[t] != 0xFFu ? eng.seq.route_ovr[t] : eng.pat[eng.cur_pat].t[t].route;
+}
+static void dna_open(void)
+{
+    if (dna.playing < 0) bs_dna_root(&eng, &dna);
+}
 static js_step_t *held_step(void)
 {
     return ui.held_step < 0 ? 0 : &eng.pat[eng.cur_pat].t[ui.track].s[(ui.step_page * 16 + ui.held_step) % JS_MAXSTEPS];
@@ -517,6 +558,24 @@ static void turn_k(int k, int32_t d)
             bs_ghosts(&eng, ui.ghost_density, 7u);
         }
         return;
+    case L_ROUTE:
+        use_layer(l);
+        if (k == 0) ui.route_target = (uint8_t)jo_clampi(ui.route_target + (d > 0 ? 1 : -1), 0, 2);
+        else if (k == 1) ui.route_latch = d > 0;
+        return;
+    case L_ENERGY:
+        use_layer(l);
+        if (k == 0) bs_set_energy(&eng, eng.nrg.knob + 0.02f * (float)d);
+        else if (k == 1) {
+            int m = jo_clampi(bs_energy_curve_mode(&eng) + (d > 0 ? 1 : -1), 0, 2);
+            bs_energy_curve(&eng, m);
+            app_say("ENERGY CURVE", m == 1 ? "RECORDS NEXT PHRASE" : m == 2 ? (eng.nrg.beats ? "PLAYS" : "NONE RECORDED") : "OFF");
+        } else if (k == 2) {
+            undo_mark(U_LEVEL);
+            bs_auto_levels(&eng, ui.track);
+            app_say("AUTO LEVELS", bs_track_name[ui.track]);
+        }
+        return;
     case L_SONG: use_layer(l); break; /* the SONG page's knobs */
     case L_STORE: case L_ERASE: use_layer(l); return;
     default: break;
@@ -549,8 +608,11 @@ static void turn_k(int k, int32_t d)
         if (k == 0) set.scene_quant = (uint8_t)jo_clampi(set.scene_quant + (d > 0 ? 1 : -1), 0, BS_Q_PHRASE);
         else if (k == 1) { int p = eng.phrase; p = d > 0 ? (p == 4 ? 8 : 16) : (p == 16 ? 8 : 4); bs_set_phrase(&eng, p); }
         else if (k == 2) { bs_cmd_form(&eng, jo_clampi(eng.form + (d > 0 ? 1 : -1), 0, BS_NFORMS - 1)); }
-        else eng.breaklock = (uint8_t)jo_clampi(eng.breaklock + (d > 0 ? 1 : -1), 0, 2);
+        else { set.decay = (uint8_t)jo_clampi(set.decay + (d > 0 ? 1 : -1), 0, 20); decay_apply(); } /* (0.6) */
         dirty = 1;
+        return;
+    case PG_DNA: /* K1: how far a child strays */
+        if (k == 0) ui.mutate_amt = jo_clampf(ui.mutate_amt + 0.02f * (float)d, 0.0f, 1.0f);
         return;
     default: /* SYSTEM */
         if (k == 0) { set.bpm = jo_clampf((float)(int32_t)(eng.clock.bpm * 2.0f + 0.5f) * 0.5f + 0.5f * (float)d, 60.0f, 220.0f); bs_cmd_bpm(&eng, set.bpm); }
@@ -612,6 +674,40 @@ static int layer_key(int l, int w, int b, int down)
         return 1;
     case L_STORE:
         if (down && w >= 0 && w < BS_NSCENES) { bs_scene_store(&eng, w); dirty = 1; app_say("SCENE STORED", SCENE_NAME[w]); }
+        else if (down && ui.page == PG_DNA && w >= 8 && w < 8 + BS_NPATTERNS && dna.playing >= 0) { /* (0.6) */
+            static const char *const PS[BS_NPATTERNS] = {"INTO P1", "INTO P2", "INTO P3", "INTO P4"};
+            if (w - 8 == eng.cur_pat) undo_mark(U_DNA);
+            bs_dna_store(&eng, &dna, dna.playing, w - 8);
+            dirty = 1;
+            app_say("GENOME STORED", PS[w - 8]);
+        }
+        return 1;
+    case L_ROUTE: /* (0.6) black 1-9: a route; white keys in order: a drawn one */
+        if (!down) return 1;
+        if (b >= 0 && b < JS_NROUTES) {
+            if (ui.route_latch) {
+                if (!ui.route_undone) { undo_mark(U_ROUTE); ui.route_undone = 1; }
+                bs_route_latch(&eng, route_mask(), (uint8_t)b);
+            } else
+                bs_route_live(&eng, route_mask(), (uint8_t)b);
+            app_say("ROUTE", js_route_name[b]);
+        } else if (w >= 0 && ui.draw_n < JS_MAXSTEPS) {
+            ui.draw[ui.draw_n++] = (uint8_t)(ui.step_page * 16 + w);
+            if (ui.draw_n >= 2u) {
+                if (ui.route_latch && !ui.route_undone) { undo_mark(U_ROUTE); ui.route_undone = 1; }
+                bs_route_draw(&eng, route_mask(), ui.draw, ui.draw_n);
+                if (ui.route_latch) bs_route_latch(&eng, route_mask(), JS_R_CUSTOM);
+                else bs_route_live(&eng, route_mask(), JS_R_CUSTOM);
+            }
+        }
+        return 1;
+    case L_ENERGY: /* (0.6) white: the step's level 1 -> 2 -> 3 -> 4; black: the track */
+        if (!down) return 1;
+        if (w >= 0) {
+            js_step_t *st = &eng.pat[eng.cur_pat].t[ui.track].s[(ui.step_page * 16 + w) % JS_MAXSTEPS];
+            undo_mark(U_LEVEL);
+            st->lvl = (uint8_t)((st->lvl ? st->lvl : 1u) % 4u + 1u);
+        } else if (b >= 0 && b < BS_NTRACKS) ui.track = (uint8_t)b;
         return 1;
     default: return 1;
     }
@@ -633,7 +729,12 @@ static void input(void)
     }
     /* taps: a page, or the button's action (a hold is its layer) */
     if (ui_tapped(in, B_HOME)) ui.page = PG_MAIN;
-    if (ui_tapped(in, B_SEQ)) ui.page = PG_SEQ;
+    if (ui_tapped(in, B_SEQ)) { /* (0.6) the overview, then DNA, in turn */
+        ui.page = ui.page == PG_SEQ ? PG_DNA : PG_SEQ;
+        if (ui.page == PG_DNA) { dna_open(); ui.cross_a = -2; }
+    }
+    if (ui_pressed(in, B_SEQ)) ui.draw_n = 0, ui.route_undone = 0; /* ROUTE: a fresh drawing each hold */
+    if ((in->btn_up & (1u << B_SEQ)) && !ui.route_latch) bs_route_live(&eng, (1u << BS_NTRACKS) - 1u, 0xFFu);
     if (ui_tapped(in, B_EDIT)) ui.page = PG_SOUND;
     if (ui_tapped(in, B_FX)) ui.page = PG_FX;
     if (ui_tapped(in, B_ARP)) ui.page = PG_SONG;
@@ -642,7 +743,14 @@ static void input(void)
         bs_cmd_fill_ex(&eng, set.fill_bars, BS_FILL_ROLL, 1);
         app_say("FILL", "AT THE PHRASE'S END");
     }
-    if (ui_tapped(in, B_LFO)) {
+    if (ui_tapped(in, B_LFO) && ui.page == PG_DNA) { /* (0.6) breed: a child of the playing genome */
+        int c;
+        dna_open();
+        undo_mark(U_DNA);
+        c = bs_dna_breed(&eng, &dna, ui.mutate_amt, ui.mutate_seed++);
+        if (c < 0) app_say("DNA", "FULL: KILL OR UNKEEP");
+        else { char t[16] = "GENOME "; char v[4]; ui_int(v, c + 1); ui_cat(t, v); app_say("BRED", t); }
+    } else if (ui_tapped(in, B_LFO)) {
         undo_mark(U_MUTATE);
         bs_mutate_track(&eng, ui.track, ui.mutate_amt, ui.mutate_seed++);
         app_say("MUTATE", "SEL+LFO: UNDO");
@@ -669,6 +777,24 @@ static void input(void)
         if (!down && !up) continue;
         if (layer_key(l, w, b, down)) { if (down) ui.key_used |= bit; continue; }
         if (up && (ui.key_used & bit) && ui.held_step != w) { ui.key_used &= ~bit; continue; }
+        if (ui.page == PG_DNA) { /* (0.6) white: a genome; black 1 KEEP, 2 KILL, 3 CROSS, 4 a NEW tree */
+            if (!down) continue;
+            dna_open();
+            if (w >= 0 && w < BS_DNA_MAX && dna.g[w].used) {
+                if (ui.cross_a == -1) { ui.cross_a = (int8_t)w; app_say("CROSS", "NOW PARENT B"); }
+                else if (ui.cross_a >= 0) {
+                    int c;
+                    undo_mark(U_DNA);
+                    c = bs_dna_cross(&eng, &dna, ui.cross_a, w);
+                    ui.cross_a = -2;
+                    app_say("CROSSED", c < 0 ? "NO ROOM" : "A'S DRUMS, B'S BREAK");
+                } else { undo_mark(U_DNA); bs_dna_select(&eng, &dna, w); app_say("GENOME", eng.clock.running ? "AT THE NEXT BAR" : "NOW"); }
+            } else if (b == 0) { bs_dna_keep(&dna, dna.playing); app_say("KEEP", dna.g[(int)dna.playing].keep ? "STAR ON" : "STAR OFF"); }
+            else if (b == 1) app_say("KILL", bs_dna_kill(&eng, &dna, dna.playing) ? "THE ROOT STAYS" : "WITH ITS CHILDREN");
+            else if (b == 2) { ui.cross_a = ui.cross_a == -2 ? -1 : -2; app_say("CROSS", ui.cross_a == -1 ? "PRESS PARENT A" : "OFF"); }
+            else if (b == 3) { bs_dna_root(&eng, &dna); app_say("DNA", "NEW TREE FROM THIS PATTERN"); }
+            continue;
+        }
         if (b >= 0) { /* the black keys: the track, everywhere */
             if (down && b < BS_NTRACKS) ui.track = (uint8_t)b, ui.held_step = -1;
             continue;
@@ -700,7 +826,8 @@ static void input(void)
     }
     /* encoders */
     if ((d = plat_enc(EN_SELECT)) != 0) {
-        if (ui_held(in, B_SEL)) { /* tempo */
+        if (layer() == L_ENERGY) { use_layer(L_ENERGY); bs_set_energy(&eng, eng.nrg.knob + 0.02f * (float)d); }
+        else if (ui_held(in, B_SEL)) { /* tempo */
             ui_use(in, B_SEL);
             set.bpm = jo_clampf(eng.clock.bpm + 0.5f * (float)d, 60.0f, 220.0f);
             bs_cmd_bpm(&eng, set.bpm);
@@ -737,6 +864,9 @@ static void input(void)
         } else if (ui.page == PG_SONG) {
             eng.anchors = d > 0;
             app_say("ANCHORS", eng.anchors ? "ON: THE BEATS STAY" : "OFF");
+        } else if (ui.page == PG_SYSTEM) { /* (0.6) BREAK-LOCK moved here from SONG's K4 */
+            eng.breaklock = (uint8_t)jo_clampi(eng.breaklock + (d > 0 ? 1 : -1), 0, 2);
+            app_say("BREAK-LOCK", LOCK_NAME[eng.breaklock % 3u]);
         }
         dirty = 1;
         ui.redraw = 1;
@@ -772,6 +902,18 @@ static void input(void)
     }
     for (k = 0; k < 4u; k++)
         if ((d = plat_enc(EN_K1 + (int)k)) != 0) turn_k((int)k, d);
+    /* (0.6) TAPE DECAY: a step held half a second (nothing turned) burns in */
+    if (eng.decay_on && ui.held_step >= 0 && keys_are_steps() && layer() == L_NONE) {
+        uint32_t bit = ui_white_bit(ui.held_step), kk;
+        for (kk = 0; kk < NKEYS; kk++)
+            if ((bit >> kk) & 1u) break;
+        if (kk < NKEYS && !(ui.key_used & bit) && plat_ms() - in->key_t[kk] >= 500u) {
+            undo_mark(U_STEPEDIT);
+            bs_burn_step(&eng, ui.track, ui.step_page * 16 + ui.held_step);
+            ui.key_used |= bit;
+            app_say("BURNED IN", "IT STAYS");
+        }
+    }
     /* autosave: 3 s after STOP (or after the last change while stopped) */
     if (eng.clock.running || !dirty) ui.save_at = 0;
     else if (!ui.save_at || in->btn_down || in->key_down) ui.save_at = plat_ms() + 3000u;
@@ -809,6 +951,8 @@ static void draw_header(void)
     ui_cat(right, " ");
     ui_int(t, (int32_t)bs_phrase_bar(&eng) + 1); ui_cat(right, t); ui_cat(right, "/");
     ui_int(t, eng.phrase); ui_cat(right, t);
+    ui_cat(right, " E"); /* (0.6) ENERGY's level */
+    t[0] = (char)('0' + je_level(eng.nrg.value)); t[1] = 0; ui_cat(right, t);
     ui_cat(right, " ");
     ui_int(t, (int32_t)plat_cpu_pct()); ui_cat(right, t); ui_cat(right, "%");
     ui_header2(l ? LAYER_NAME[l] : PAGE_NAME[ui.page], mid, right, alarm, pending_frac());
@@ -830,8 +974,43 @@ static void track_cells(uint32_t t, uint8_t on[16], uint8_t vel[16], uint8_t mar
     }
     *play = -1;
     if (eng.clock.running && tr->len) {
-        uint32_t p = (eng.seq.pos[t] + tr->len - 1u) % tr->len;
+        uint32_t p = bs_route_at(&eng, (int)t, (eng.seq.pos[t] + tr->len - 1u) % tr->len); /* (0.6) the route's */
         if (p >= base && p < base + 16u) *play = (int)(p - base);
+    }
+}
+
+/* (0.6) over the main grid: the route's order (the position each step plays at), TAPE DECAY's fading (a dim frame)
+ * and burned steps (a white top), and in the ENERGY layer the levels (1-4) */
+static void grid_overlay(uint32_t t, int levels)
+{
+    const js_track_t *tr = &eng.pat[eng.cur_pat].t[t];
+    uint32_t i, len = tr->len ? tr->len : 16u, base = ui.step_page * 16u;
+    uint8_t r = route_of(t);
+    for (i = 0; i < 16u; i++) {
+        int32_t x = 4 + (int32_t)(i & 7u) * 29, y = 19 + (int32_t)(i >> 3) * 26;
+        const js_step_t *st = &tr->s[(base + i) % JS_MAXSTEPS];
+        char v[4];
+        if (base + i >= len) continue;
+        if (levels) {
+            v[0] = (char)('0' + (st->lvl ? st->lvl : 1u)); v[1] = 0;
+            ui_fit(x + 10, y + 6, 12, &FONT_XS, v, je_level(eng.nrg.value) >= (st->lvl ? st->lvl : 1u) ? C_WHITE : C_DIM);
+            continue;
+        }
+        if ((st->flags & (JS_ON | JS_DECAY | JS_BURN)) == (JS_ON | JS_DECAY)) {
+            cv_rect(x + 1, y + 1, 25, 1, C_DIM); cv_rect(x + 1, y + 20, 25, 1, C_DIM);
+        }
+        if (st->flags & JS_BURN) cv_rect(x + 2, y + 1, 23, 2, C_WHITE);
+    }
+    if (!levels && r != JS_R_FORWARD) { /* the order: the first position each step is played at */
+        uint32_t p, seen = 0;
+        for (p = 0; p < len && p < 32u; p++) {
+            uint32_t at = bs_route_at(&eng, (int)t, p);
+            char v[4];
+            if (at < base || at >= base + 16u || (seen >> (at - base) & 1u)) continue;
+            seen |= 1u << (at - base);
+            ui_int(v, (int32_t)(p + 1u));
+            ui_fit(4 + (int32_t)((at - base) & 7u) * 29 + 3, 19 + (int32_t)((at - base) >> 3) * 26 + 3, 14, &FONT_T, v, C_GRAY);
+        }
     }
 }
 
@@ -861,6 +1040,56 @@ static void layer_page(int l)
     uint32_t i;
     const char *black = 0;
     ui_banner(LAYER_NAME[l], HINT[l]);
+    if (l == L_ENERGY) { /* (0.6) the energy, its curve, and the track's levels */
+        uint8_t on[16], vel[16], mark[16];
+        int play, cm = bs_energy_curve_mode(&eng);
+        char v[8];
+        ui_banner("ENERGY", "STEP LEVELS 1-4");
+        track_cells(ui.track, on, vel, mark, &play);
+        for (i = 0; i < 16u; i++) {
+            const js_step_t *st = &eng.pat[eng.cur_pat].t[ui.track].s[(ui.step_page * 16u + i) % JS_MAXSTEPS];
+            vel[i] = (uint8_t)(31u * (st->lvl ? st->lvl : 1u));
+            mark[i] = 0;
+            if (!on[i]) on[i] = 0;
+        }
+        ui_grid(21, on, vel, mark, play, -1);
+        grid_overlay(ui.track, 1);
+        cv_rect(4, 75, 232, 8, C_LINE);
+        cv_rect(4, 75, (int32_t)(232.0f * eng.nrg.value), 8, C_HI);
+        t[0] = 0; ui_cat(t, "ENERGY "); ui_pct(v, eng.nrg.value); ui_cat(t, v);
+        ui_cat(t, "  LEVEL "); v[0] = (char)('0' + je_level(eng.nrg.value)); v[1] = 0; ui_cat(t, v);
+        ui_cat(t, "  CURVE "); ui_cat(t, cm == 1 ? (eng.nrg.recording ? "RECORDING" : "ARMED") : cm == 2 ? "PLAYING" : "OFF");
+        ui_fit(4, 86, 232, &FONT_XS, t, C_WHITE);
+        t[0] = 0; ui_cat(t, bs_track_name[ui.track]); ui_cat(t, ": WHITE KEYS SET LEVELS  BLACK: TRACK");
+        ui_fit(4, 101, 232, &FONT_T, t, C_GRAY);
+        return;
+    }
+    if (l == L_ROUTE) { /* (0.6) the routes on the black keys, the drawing, target and latch */
+        static const char *const TG[3] = {"THE TRACK", "BREAK", "ALL TRACKS"};
+        uint8_t cur = route_of(ui.track == BS_T_BREAK || ui.route_target != 1 ? ui.track : BS_T_BREAK);
+        ui_banner("ROUTE", ui.route_latch ? "LATCHED: IT STAYS" : "WHILE HELD");
+        for (i = 0; i < JS_NROUTES; i++) {
+            int32_t x = 2 + (int32_t)(i % 3u) * 79, y = 21 + (int32_t)(i / 3u) * 19;
+            char nm[16] = "";
+            char v[4];
+            ui_int(v, (int32_t)i + 1); ui_cat(nm, v); ui_cat(nm, " "); ui_cat(nm, js_route_name[i]);
+            cv_rect(x, y, 76, 17, i == cur ? C_HI : C_LINE);
+            ui_fit(x + 3, y + 4, 71, &FONT_T, nm, i == cur ? C_BLACK : C_WHITE);
+        }
+        t[0] = 0; ui_cat(t, "TARGET "); ui_cat(t, TG[ui.route_target % 3u]);
+        if (ui.route_target == 0) { ui_cat(t, " ("); ui_cat(t, bs_track_name[ui.track]); ui_cat(t, ")"); }
+        ui_fit(4, 80, 232, &FONT_XS, t, C_WHITE);
+        if (ui.draw_n) {
+            uint32_t k2;
+            char v[4];
+            t[0] = 0; ui_cat(t, "DRAWN:");
+            for (k2 = 0; k2 < ui.draw_n && k2 < 12u; k2++) { ui_cat(t, " "); ui_int(v, ui.draw[k2] + 1); ui_cat(t, v); }
+            ui_fit(4, 93, 232, &FONT_XS, t, C_HI);
+        } else
+            ui_fit(4, 93, 232, &FONT_XS, "BLACK 1-9: A ROUTE  WHITE IN ORDER: DRAW ONE", C_GRAY);
+        ui_fit(4, 105, 232, &FONT_T, "K1 TARGET  K2 LATCH", C_DIM);
+        return;
+    }
     if (l == L_SEL) {
         ui_fit(6, 24, 228, &FONT_S, "SEL + LFO   UNDO", C_WHITE);
         ui_fit(6, 40, 228, &FONT_S, "SEL + ENV   REDO", C_WHITE);
@@ -897,7 +1126,8 @@ static void layer_page(int l)
         return;
     case L_STORE:
         for (i = 0; i < BS_NSCENES; i++) { name[i] = SCENE_NAME[i]; lit[i] = eng.scene[i].used; }
-        black = "A WHITE KEY STORES THE STATE THERE";
+        black = ui.page == PG_DNA ? "WHITE 9-12: THE GENOME INTO P1-P4" : "A WHITE KEY STORES THE STATE THERE";
+        if (ui.page == PG_DNA) for (i = 0; i < BS_NPATTERNS; i++) name[8 + i] = PAT_KEY[i];
         break;
     default: break;
     }
@@ -918,10 +1148,13 @@ static void main_page(void)
     uint32_t i;
     const char *gname = ui.groove_of[eng.cur_pat] >= 0 ? bs_groove_name[ui.groove_of[eng.cur_pat]] : PATTERN_NAME[eng.cur_pat];
     ui_fit(4, 1, 96, &FONT_B, bs_track_name[ui.track], C_HI);
-    ui_fit(102, 4, 98, &FONT_XS, gname, C_GRAY);
+    if (route_of(ui.track) == JS_R_FORWARD) ui_fit(102, 4, 98, &FONT_XS, gname, C_GRAY);
     ui_fit(204, 4, 34, &FONT_XS, ui.step_page ? "17-32" : "1-16", C_DIM);
     track_cells(ui.track, on, vel, mark, &play);
+    if (route_of(ui.track) != JS_R_FORWARD) for (i = 0; i < 16u; i++) mark[i] &= (uint8_t)~4u; /* room for the order */
     ui_grid(19, on, vel, mark, play, ui.held_step);
+    grid_overlay(ui.track, 0);
+    if (route_of(ui.track) != JS_R_FORWARD) { char rn[20] = "ROUTE "; ui_cat(rn, js_route_name[route_of(ui.track) % JS_NROUTES]); ui_fit(102, 4, 98, &FONT_XS, rn, C_HI); }
     for (i = 0; i < BS_NTRACKS; i++) mini_row(0, 73 + (int32_t)i * 6, 15, 4, i, i == ui.track);
     if (ui.rec) { cv_rect(206, 1, 32, 14, UI_RED); ui_fit(209, 3, 28, &FONT_XS, "REC", C_WHITE); }
     if (held_step() && keys_are_steps()) { /* the held step's values */
@@ -962,6 +1195,43 @@ static void overview_page(void)
     ui_fit(4, 96, 232, &FONT_XS, t, C_GRAY);
 }
 
+/* (0.6) the DNA page: the family tree, by generation left to right; the playing genome lit, kept ones starred */
+static void dna_page(void)
+{
+    int32_t gx[BS_DNA_MAX], gy[BS_DNA_MAX];
+    uint32_t rows[8] = {0}, i;
+    char t[48], v[8];
+    if (dna.playing < 0) { ui_fit(6, 40, 228, &FONT_S, "NO TREE YET", C_GRAY); return; }
+    for (i = 0; i < BS_DNA_MAX; i++) { /* positions: column = generation (from 7 on, the last), row = order in it */
+        uint32_t c = dna.g[i].gen > 6u ? 6u : dna.g[i].gen;
+        if (!dna.g[i].used) { gx[i] = gy[i] = -1; continue; }
+        gx[i] = 3 + (int32_t)c * 34;
+        gy[i] = 3 + (int32_t)(rows[c] % 6u) * 15;
+        rows[c]++;
+    }
+    for (i = 0; i < BS_DNA_MAX; i++) { /* the lines to the parents */
+        int p = dna.g[i].parent;
+        if (gx[i] < 0 || p < 0 || gx[p] < 0) continue;
+        cv_rect(gx[p] + 28, gy[p] + 6, 3, 1, C_DIM);
+        cv_rect(gx[p] + 30, gy[p] < gy[i] ? gy[p] + 6 : gy[i] + 6, 1, (gy[p] < gy[i] ? gy[i] - gy[p] : gy[p] - gy[i]) + 1, C_DIM);
+        cv_rect(gx[p] + 30, gy[i] + 6, gx[i] - gx[p] - 30, 1, C_DIM);
+    }
+    for (i = 0; i < BS_DNA_MAX; i++) {
+        int pl = (int)i == dna.playing, cr = (int)i == ui.cross_a;
+        if (gx[i] < 0) continue;
+        cv_rect(gx[i], gy[i], 28, 13, pl ? C_HI : cr ? C_WHITE : C_LINE);
+        t[0] = 0; ui_int(v, (int32_t)i + 1); ui_cat(t, v); if (dna.g[i].keep) ui_cat(t, "*");
+        ui_fit(gx[i] + 3, gy[i] + 3, 24, &FONT_T, t, pl || cr ? C_BLACK : C_WHITE);
+    }
+    t[0] = 0; ui_cat(t, "PLAYING "); ui_int(v, dna.playing + 1); ui_cat(t, v);
+    ui_cat(t, "  GEN "); ui_int(v, dna.g[(int)dna.playing].gen); ui_cat(t, v);
+    ui_cat(t, "  "); ui_int(v, bs_dna_count(&dna)); ui_cat(t, v); ui_cat(t, "/16");
+    if (ui.cross_a == -1) ui_cat(t, "  CROSS: PRESS A");
+    else if (ui.cross_a >= 0) ui_cat(t, "  CROSS: PRESS B");
+    ui_fit(4, 92, 232, &FONT_XS, t, C_WHITE);
+    ui_fit(4, 104, 232, &FONT_T, "LFO BREED  B1 KEEP  B2 KILL  B3 CROSS  B4 NEW", C_GRAY);
+}
+
 static void song_page(void)
 {
     uint32_t i, bar = eng.clock.running ? (eng.clock.abs_step >> 4) & 3u : 4u;
@@ -989,6 +1259,8 @@ static void song_page(void)
     t[0] = 0;
     ui_cat(t, "ANCHORS "); ui_cat(t, eng.anchors ? "ON" : "OFF");
     ui_cat(t, "  LINK KICKS "); ui_cat(t, eng.send_kicks ? "ON" : "OFF");
+    ui_cat(t, "  DECAY "); /* (0.6) */
+    if (eng.decay_on) { ui_int(v, set.decay * 5); ui_cat(t, v); ui_cat(t, "%"); } else ui_cat(t, "OFF");
     ui_fit(4, 101, 232, &FONT_XS, t, C_DIM);
 }
 
@@ -1052,6 +1324,7 @@ static void draw_body(void)
         break;
     }
     case PG_SONG: song_page(); break;
+    case PG_DNA: dna_page(); break;
     default: { /* SYSTEM */
         char v[16];
         t[0] = 0; ui_cat(t, "CPU "); ui_int(v, (int32_t)plat_cpu_pct()); ui_cat(t, v); ui_cat(t, "%  XRUNS "); ui_int(v, (int32_t)plat_xruns()); ui_cat(t, v);
@@ -1062,6 +1335,7 @@ static void draw_body(void)
         t[0] = 0; ui_cat(t, "LINK CH "); ui_int(v, eng.link.channel + 1); ui_cat(t, v); ui_cat(t, jl_alive(&eng.link, eng.ms) ? "  PEER OK" : "  NO PEER");
         ui_fit(6, 34, 234 - (6), &FONT_S, t, C_GRAY);
         t[0] = 0; ui_cat(t, "BANK "); ui_cat(t, eng.has_bank ? eng.breaks[0].name : "NONE (TEST BREAK)");
+        ui_cat(t, "  LOCK "); ui_cat(t, LOCK_NAME[eng.breaklock % 3u]);
         ui_fit(6, 50, 234 - (6), &FONT_S, t, C_GRAY);
         t[0] = 0; ui_cat(t, "STORE "); ui_cat(t, load_report ? "DEFAULTS USED" : "OK"); ui_cat(t, dirty ? "  UNSAVED" : "");
         ui_fit(6, 66, 234 - (6), &FONT_S, t, load_report ? C_WHITE : C_GRAY);
@@ -1102,7 +1376,18 @@ static void draw_strip(void)
         g[n++] = (ui_kg_t)UI_B(0, 6, "MUTE");
         break;
     case L_FX: g[n++] = (ui_kg_t)UI_W(0, 7, "PERFORM FX WHILE HELD"); break;
+    case L_ROUTE: g[n++] = (ui_kg_t)UI_W(0, 15, "PRESS IN ORDER: DRAW A ROUTE"); g[n++] = (ui_kg_t)UI_B(0, 8, "ROUTES 1-9"); break;
+    case L_ENERGY:
+        g[n++] = (ui_kg_t)UI_W(0, 15, "THE STEP'S LEVEL 1-4"); g[n++] = (ui_kg_t)UI_B(0, 6, "TRACKS");
+        enc[0] = "ENERGY";
+        break;
     default:
+        if (ui.page == PG_DNA) {
+            g[n++] = (ui_kg_t)UI_W(0, 15, "PLAY A GENOME (NEXT BAR)");
+            g[n++] = (ui_kg_t)UI_B(0, 3, "KEEP KILL CROSS NEW");
+            enc[2] = "PATTERN";
+            break;
+        }
         if (ui.page == PG_SOUND) {
             g[n++] = (ui_kg_t)UI_W(0, 15, ui.track == BS_T_BREAK ? "PLAY SLICES 1-16" : "PLAY IT: SOFT (LEFT) TO HARD (RIGHT)");
             enc[1] = ui.track == BS_T_PERC ? "VOICE" : "KIT NODE";
@@ -1117,7 +1402,7 @@ static void draw_strip(void)
         else if (ui.page == PG_SOUND) enc[2] = "PATTERN";
         else if (ui.page == PG_FX) { enc[1] = "PRESET"; enc[2] = "ROOM"; }
         else if (ui.page == PG_SONG) { enc[1] = "ANCHORS"; enc[2] = "LINK KICK"; }
-        else enc[2] = "USB HOST";
+        else { enc[1] = "BRK LOCK"; enc[2] = "USB HOST"; }
         break;
     }
     ui_strip(enc, g, n, l ? LAYER_NAME[l] : 0);
@@ -1146,6 +1431,22 @@ static void draw_footer(void)
             ui_int(b[0], st->vel); vt[0] = b[0];
             ui_int(b[2], st->ratch + 1); vt[2] = b[2];
             ui_int(b[3], st->micro); vt[3] = b[3];
+        }
+        ui_macros(name, v, vt, ui.hi_until && plat_ms() < ui.hi_until ? ui.hi_macro : -1);
+        return;
+    }
+    if (l == L_ROUTE || l == L_ENERGY) { /* (0.6) */
+        static const char *const TG[3] = {"TRACK", "BREAK", "ALL"};
+        static const char *const CM[3] = {"OFF", "REC", "PLAY"};
+        if (l == L_ROUTE) {
+            name[0] = "TARGET"; name[1] = "LATCH"; name[2] = name[3] = "";
+            v[0] = (float)ui.route_target / 2.0f; v[1] = ui.route_latch;
+            vt[0] = TG[ui.route_target % 3u]; vt[1] = ui.route_latch ? "ON" : "OFF"; vt[2] = vt[3] = "";
+        } else {
+            int cm = bs_energy_curve_mode(&eng);
+            name[0] = "ENERGY"; name[1] = "CURVE"; name[2] = "AUTO LVL"; name[3] = "";
+            v[0] = eng.nrg.knob; v[1] = (float)cm / 2.0f; v[2] = 0.0f;
+            vt[1] = CM[cm % 3]; vt[2] = "TURN"; vt[3] = "";
         }
         ui_macros(name, v, vt, ui.hi_until && plat_ms() < ui.hi_until ? ui.hi_macro : -1);
         return;
@@ -1179,11 +1480,16 @@ static void draw_footer(void)
         v[3] = ui.track == BS_T_BREAK ? eng.break_level : eng.snd[ui.track].level;
         break;
     case PG_SONG:
-        name[0] = "QUANT"; name[1] = "PHRASE"; name[2] = "FORM"; name[3] = "BRK LOCK";
+        name[0] = "QUANT"; name[1] = "PHRASE"; name[2] = "FORM"; name[3] = "DECAY";
         v[0] = (float)set.scene_quant / 5.0f; v[1] = eng.phrase == 4 ? 0.0f : eng.phrase == 8 ? 0.5f : 1.0f;
-        v[2] = (float)eng.form / (float)(BS_NFORMS - 1); v[3] = (float)eng.breaklock / 2.0f;
+        v[2] = (float)eng.form / (float)(BS_NFORMS - 1); v[3] = (float)set.decay / 20.0f;
         vt[0] = QUANT_NAME[set.scene_quant % 6u]; ui_int(b[1], eng.phrase); vt[1] = b[1];
-        vt[2] = eng.form ? bs_form_name[eng.form] : "OFF"; vt[3] = LOCK_NAME[eng.breaklock % 3u];
+        vt[2] = eng.form ? bs_form_name[eng.form] : "OFF";
+        if (set.decay) { ui_int(b[3], set.decay * 5); ui_cat(b[3], "%"); vt[3] = b[3]; } else vt[3] = "OFF";
+        break;
+    case PG_DNA:
+        name[0] = "MUTATE"; name[1] = name[2] = name[3] = "";
+        v[0] = ui.mutate_amt; vt[1] = vt[2] = vt[3] = "";
         break;
     default:
         name[0] = "BPM"; name[1] = "CLOCK"; name[2] = "LINK CH"; name[3] = "SYNC OUT";
@@ -1210,7 +1516,7 @@ static void draw_footer(void)
 static void lights(void)
 {
     uint32_t b = 0, keys = 0, dimk = 0, k;
-    static const uint8_t PB[NPAGES] = {B_HOME, B_SEQ, B_EDIT, B_FX, B_ARP, B_GLO};
+    static const uint8_t PB[NPAGES] = {B_HOME, B_SEQ, B_EDIT, B_FX, B_ARP, B_GLO, B_SEQ};
     int l = layer();
     b |= 1u << PB[ui.page];
     if (eng.clock.running) b |= 1u << B_PLAY;
@@ -1236,6 +1542,14 @@ static void lights(void)
     } else if (l == L_FILL) {
         for (k = 0; k < BS_NFILLS; k++) dimk |= ui_white_bit((int)k);
         if (eng.fill_on) keys |= ui_white_bit(eng.fill_type);
+    } else if (l == L_ROUTE) { /* (0.6) the routes on the black keys, the one in force lit */
+        for (k = 0; k < JS_NROUTES; k++) dimk |= ui_black_bit((int)k);
+        keys |= ui_black_bit(route_of(ui.track));
+        for (k = 0; k < ui.draw_n; k++) if (ui.draw[k] / 16u == ui.step_page) keys |= ui_white_bit(ui.draw[k] % 16u);
+    } else if (ui.page == PG_DNA && l == L_NONE) { /* the genomes: used dim, the playing one lit */
+        for (k = 0; k < BS_DNA_MAX; k++) if (dna.g[k].used) dimk |= ui_white_bit((int)k);
+        if (dna.playing >= 0) keys |= ui_white_bit(dna.playing);
+        for (k = 0; k < 4u; k++) dimk |= ui_black_bit((int)k);
     } else if (ui.page == PG_SOUND || ui.rec) {
         keys = ui.in.keys;
         keys |= ui_black_bit(ui.track);
@@ -1274,6 +1588,11 @@ void app_frame(void)
     input();
     lights();
     if (ui.save_at && now >= ui.save_at && !eng.clock.running && dirty) { auto_save = 1; save_all(); ui.save_at = 0; }
+    /* (0.6) TAPE DECAY: the fading steps fade once a bar */
+    if (eng.clock.running && (eng.clock.abs_step >> 4) != ui.last_bar) {
+        ui.last_bar = eng.clock.abs_step >> 4;
+        if (eng.decay_on) { bs_decay_bar(&eng); ui.redraw = 1; }
+    }
     if (ui.splash_until) {
         if (now < ui.splash_until) return;
         ui.splash_until = 0;

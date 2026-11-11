@@ -8,6 +8,7 @@
 #pragma once
 #include "../../../shared/seq/jo_seq.h"
 #include "../../../shared/seq/jo_cmdq.h"
+#include "../../../shared/seq/jo_energy.h"
 #include "../../../shared/drums/jo_drums.h"
 #include "../../../shared/sampler/jo_break.h"
 #include "../../../shared/fx/jo_fx.h"
@@ -112,6 +113,17 @@ typedef struct {
     float peak;
     /* the test break's RAM (when no bank is installed) */
     int16_t *test_pcm;
+    /* (0.6) ENERGY (jo_energy.h): the steps' levels gate by it; it thins the room and the grit below full, and goes
+     * over the link both ways (CC 109). nrg_arm: the curve records from the next phrase's start */
+    je_energy_t nrg;
+    uint8_t nrg_arm, nrg_cc;           /* nrg_cc: the last value sent or heard (no echo) */
+    /* (0.6) DENSITY to the link once a bar: the hits of the bar before */
+    uint32_t bar_hits;
+    uint8_t density;                   /* the last sent, 0..127 */
+    /* (0.6) TAPE DECAY: recorded steps fade (decay_amt / 256 a bar) */
+    uint8_t decay_on, decay_amt;
+    /* (0.6) DNA: a genome to play from the next bar (copied into the playing pattern slot) */
+    const js_pattern_t *gen_next;
 } bs_engine_t;
 
 /* test_pcm: RAM for the procedural test break, jb_testbreak_frames(22059) samples (or 0: no test break);
@@ -176,3 +188,49 @@ void bs_mutate_track(bs_engine_t *e, int track, float amount, uint32_t seed); /*
 int bs_record(bs_engine_t *e, int track, float vel, int data);
 void bs_erase_step(bs_engine_t *e, int track, int step);
 void bs_erase_track(bs_engine_t *e, int track);
+
+/* ---- (0.6) ENERGY, ROUTES, DNA, TAPE DECAY ---- */
+/* ENERGY 0..1 from the knob (the main loop); following the link's, it is not sent back */
+void bs_set_energy(bs_engine_t *e, float v);
+void bs_follow_energy(bs_engine_t *e, float v);
+/* the curve: 1 arms recording (one phrase from the next phrase start), 2 plays it, 0 off */
+void bs_energy_curve(bs_engine_t *e, int mode);
+int bs_energy_curve_mode(const bs_engine_t *e);  /* 0 off, 1 armed or recording, 2 playing */
+/* AUTO LEVELS: a track of the current pattern gets levels from its musical role: the beats 1 (hats, perc and impact
+ * 2), other 8ths 2, ghosts and soft hits 3, ratchets 4, odd 16ths 3 (break, kick, snare) or 4 (the rest) */
+void bs_auto_levels(bs_engine_t *e, int track);
+/* ROUTES: a live route over tracks (mask of tracks; JS_R_*, or 0xFF to clear) */
+void bs_route_live(bs_engine_t *e, uint32_t mask, uint8_t route);
+/* a route written into the current pattern's tracks (latched; FORWARD clears it) */
+void bs_route_latch(bs_engine_t *e, uint32_t mask, uint8_t route);
+/* a drawn CUSTOM route (n steps in order) into the tracks of mask (their order[]; their route is not changed) */
+void bs_route_draw(bs_engine_t *e, uint32_t mask, const uint8_t *order, uint32_t n);
+/* the step a track plays at its position p (0 .. len-1), with the route now in force */
+uint32_t bs_route_at(const bs_engine_t *e, int track, uint32_t p);
+/* TAPE DECAY: once a bar (the main loop): the current pattern's fading steps fade */
+void bs_decay_bar(bs_engine_t *e);
+void bs_burn_step(bs_engine_t *e, int track, int step); /* the step stays (JS_BURN) */
+
+/* DNA: a family tree of genomes (pattern snapshots); breed = a mutated child of the playing one, cross = A's drums with
+ * B's break; selecting plays a genome from the next bar (it is copied into the playing pattern slot) */
+#define BS_DNA_MAX 16
+typedef struct {
+    js_pattern_t pat;
+    int8_t parent;                     /* -1: the root */
+    uint8_t used, keep, gen;           /* gen: the depth in the tree */
+    uint16_t born;                     /* the order of birth (culling takes the oldest) */
+} bs_genome_t;
+typedef struct {
+    bs_genome_t g[BS_DNA_MAX];
+    int8_t playing;                    /* -1: no tree yet */
+    uint16_t births;
+} bs_dna_t;
+void bs_dna_root(bs_engine_t *e, bs_dna_t *d);             /* a new tree from the current pattern */
+int bs_dna_breed(bs_engine_t *e, bs_dna_t *d, float amount, uint32_t seed); /* the child's index, or -1 (full, all kept) */
+int bs_dna_cross(bs_engine_t *e, bs_dna_t *d, int a, int b);              /* the child's index, or -1 */
+int bs_dna_select(bs_engine_t *e, bs_dna_t *d, int i);     /* 0 = queued */
+void bs_dna_keep(bs_dna_t *d, int i);                        /* a star on / off */
+int bs_dna_kill(bs_engine_t *e, bs_dna_t *d, int i);       /* the genome and its children; -1 = the root (refused) */
+int bs_dna_count(const bs_dna_t *d);
+void bs_dna_store(bs_engine_t *e, const bs_dna_t *d, int i, int slot); /* a genome into pattern P1-P4 */
+

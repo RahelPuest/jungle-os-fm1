@@ -124,6 +124,7 @@ static void track_str(js_track_t *t, const char *s)
     t->len = 16;
 }
 
+static void auto_levels_track(js_track_t *tr, uint32_t track);
 void bs_default_patterns(bs_engine_t *e)
 {
     /* at 174 BPM; the test break's own hits (jo_break.c, the Amen pattern): kicks on 1, 1 and, 3 and, 3 a; snares on 2 and 4 */
@@ -160,6 +161,9 @@ void bs_default_patterns(bs_engine_t *e)
         bs_ghosts(e, 0.6f, 11);
         e->cur_pat = keep;
     }
+    /* (0.6) ENERGY's levels from each step's role (at full ENERGY, as always, every step plays) */
+    for (p = 0; p < BS_NPATTERNS; p++)
+        for (t = 0; t < BS_NTRACKS; t++) auto_levels_track(&e->pat[p].t[t], t);
 }
 
 void bs_ghosts(bs_engine_t *e, float density, uint32_t seed)
@@ -345,6 +349,7 @@ void bs_groove(bs_engine_t *e, int g)
         st->data = (uint8_t)sl;
     }
     p.swing = gr->swing;
+    for (i = 0; i < BS_NTRACKS; i++) auto_levels_track(&p.t[i], i); /* (0.6) ENERGY's levels */
     f = lock_fn();
     e->undo = e->pat[e->cur_pat];
     e->undo_valid = 1;
@@ -433,6 +438,35 @@ static void on_step(void *ctx, uint32_t abs, uint32_t off)
 {
     bs_engine_t *e = (bs_engine_t *)ctx;
     (void)off;
+    /* (0.6) ENERGY: the curve armed starts at the phrase's start; the level for the step evaluated next; the link */
+    if (e->nrg_arm && ((abs + 1u) % (16u * (e->phrase ? e->phrase : 4u))) == 0u) {
+        e->nrg_arm = 0;
+        e->nrg.recording = 1, e->nrg.playing = 0;
+    }
+    if (e->nrg.recording || e->nrg.playing) je_step(&e->nrg, abs + 1u, e->phrase);
+    else e->nrg.value = e->nrg.knob;
+    e->seq.energy = je_level(e->nrg.value);
+    {
+        uint8_t v = (uint8_t)(jo_clampf(e->nrg.value, 0.0f, 1.0f) * 127.0f + 0.5f);
+        if (v != e->nrg_cc) {
+            uint32_t pk = jl_cc(&e->link, JL_CC_ENERGY, v);
+            e->nrg_cc = v;
+            send(e, &pk, 1);
+        }
+    }
+    /* (0.6) DENSITY: once a bar, the bar before's hits (48 a bar = 127) */
+    if ((abs & 15u) == 0u && abs) {
+        uint32_t pk, v = e->bar_hits * 127u / 48u;
+        e->density = (uint8_t)(v > 127u ? 127u : v);
+        e->bar_hits = 0;
+        pk = jl_cc(&e->link, JL_CC_DENSITY, e->density);
+        send(e, &pk, 1);
+    }
+    /* (0.6) DNA: a genome queued lands at the bar (before the bar's first step is evaluated) */
+    if (e->gen_next && ((abs + 1u) & 15u) == 0u) {
+        e->pat[e->cur_pat] = *e->gen_next;
+        e->gen_next = 0;
+    }
     if (e->fill_on && !js_before(abs, e->fill_end + 1u)) e->fill_on = 0;
     /* (0.5) the trig conditions' fill flag, for the step evaluated next */
     e->seq.fill = (uint8_t)(e->fill_on && !js_before(abs + 1u, e->fill_start) && js_before(abs + 1u, e->fill_end));
@@ -485,7 +519,15 @@ static void on_clock_out(void *ctx, uint32_t off)
     if (e->send_clock && e->clock.source == JS_CLK_INT) send(e, &p, 1);
 }
 
+static int xform_(void *ctx, uint32_t t, uint32_t abs, js_step_t *st);
+/* (0.6) a hit the transform adds (the rhythm graph, fills, performance modes) is an embellishment: ENERGY level 4 */
 static int xform(void *ctx, uint32_t t, uint32_t abs, js_step_t *st)
+{
+    int was_on = (st->flags & JS_ON) != 0, r = xform_(ctx, t, abs, st);
+    if (r && !was_on && (st->flags & JS_ON) && !st->lvl) st->lvl = 4;
+    return r;
+}
+static int xform_(void *ctx, uint32_t t, uint32_t abs, js_step_t *st)
 {
     bs_engine_t *e = (bs_engine_t *)ctx;
     const float *r = e->rv.phys;
@@ -607,6 +649,7 @@ static void fire_(bs_engine_t *e, const js_event_t *ev)
     float vel = (float)ev->vel * (1.0f / 127.0f);
     uint32_t pk[2], np;
     e->events_fired++;
+    if (!ev->hit) e->bar_hits++;
     if (e->perf == BS_PERF_TAPESTOP && e->tape < 0.05f) return; /* stopped */
     if (ev->nhits > 1u) vel *= 0.6f + 0.4f * (float)(ev->hit + 1u) / (float)ev->nhits; /* rolls crescendo */
     if (ev->track == BS_T_BREAK) {
@@ -705,6 +748,9 @@ void bs_init(bs_engine_t *e, int16_t *test_pcm, const uint8_t *bank, uint32_t ba
     e->pending_at = 0xFFFFFFFFu;
     e->tape = 1.0f;
     bs_set_phrase(e, 4);
+    je_init(&e->nrg);
+    e->nrg_cc = 127;
+    e->decay_amt = 24;
 }
 
 /* ------------------------------------------------------------ (0.5) help --- */
@@ -812,10 +858,12 @@ int bs_record(bs_engine_t *e, int track, float vel, int data)
     /* the step nearest to now: the one the sequencer evaluated last (it evaluates each step half a step early, so
      * in a step's first half that is this step, in its second half the next) */
     idx = ((uint32_t)e->seq.pos[(uint32_t)track % BS_NTRACKS] + len - 1u) % len;
+    idx = bs_route_at(e, track, idx) % len; /* (0.6) with a route, the step that sounds there */
     late = e->clock.phase >= 0x80000000u;
     f = lock_fn();
     was_on = (tr->s[idx].flags & JS_ON) != 0;
     tr->s[idx].flags |= JS_ON;
+    if (e->decay_on) tr->s[idx].flags = (uint8_t)((tr->s[idx].flags | JS_DECAY) & ~JS_BURN); /* (0.6) it fades */
     tr->s[idx].vel = (uint8_t)jo_clampi((int32_t)(vel * 127.0f + 0.5f), 1, 127);
     tr->s[idx].micro = 0;
     tr->s[idx].data = (uint8_t)(track == BS_T_BREAK ? (uint32_t)data % (e->slices ? e->slices : 16u) : idx);
@@ -1049,7 +1097,14 @@ void bs_render_float(bs_engine_t *e, float *buf, uint32_t n)
         render_voices(e, buf + pos, e->send_buf + pos, end - pos);
         pos = end;
     }
-    jf_drum_process(&e->bus, buf, e->send_buf, n);
+    if (e->nrg.value < 0.999f) { /* (0.6) below full ENERGY: a thinner room, less grit (at full: untouched) */
+        float f = jo_clampf(e->nrg.value, 0.0f, 1.0f), g = e->bus.grit, rs = 0.35f + 0.65f * f;
+        for (i = 0; i < n; i++) e->send_buf[i] *= rs;
+        e->bus.grit = g * (0.3f + 0.7f * f);
+        jf_drum_process(&e->bus, buf, e->send_buf, n);
+        e->bus.grit = g;
+    } else
+        jf_drum_process(&e->bus, buf, e->send_buf, n);
     /* link heartbeat, and the millisecond count from the samples */
     {
         uint32_t tot = n * 1000u + e->ms_rem, pk[1];
@@ -1078,4 +1133,253 @@ void bs_render(bs_engine_t *e, int32_t *lr, uint32_t n, float out_gain)
         done += m;
     }
     e->peak = pk;
+}
+
+/* ===================================================== (0.6) ENERGY ROUTES DNA DECAY === */
+void bs_set_energy(bs_engine_t *e, float v)
+{
+    e->nrg.knob = jo_clampf(v, 0.0f, 1.0f);
+    if (e->nrg.playing) e->nrg.playing = 0; /* the hand takes over from the curve */
+    if (!e->clock.running) e->nrg.value = e->nrg.knob, e->seq.energy = je_level(e->nrg.value);
+}
+void bs_follow_energy(bs_engine_t *e, float v)
+{
+    e->nrg.knob = jo_clampf(v, 0.0f, 1.0f);
+    e->nrg.playing = 0;
+    e->nrg_cc = (uint8_t)(e->nrg.knob * 127.0f + 0.5f); /* heard: not sent back */
+    if (!e->clock.running) e->nrg.value = e->nrg.knob, e->seq.energy = je_level(e->nrg.value);
+}
+void bs_energy_curve(bs_engine_t *e, int mode)
+{
+    if (mode == 1) { e->nrg_arm = 1; e->nrg.playing = 0; e->nrg.recording = 0; }
+    else if (mode == 2) { e->nrg_arm = 0; e->nrg.recording = 0; e->nrg.playing = e->nrg.beats != 0; }
+    else { e->nrg_arm = 0; e->nrg.recording = 0; e->nrg.playing = 0; }
+}
+int bs_energy_curve_mode(const bs_engine_t *e) { return e->nrg_arm || e->nrg.recording ? 1 : e->nrg.playing ? 2 : 0; }
+
+static void auto_levels_track(js_track_t *tr, uint32_t track)
+{
+    uint32_t i;
+    for (i = 0; i < JS_MAXSTEPS; i++) {
+        js_step_t *st = &tr->s[i];
+        uint32_t pos = i & 15u;
+        int core = track == BS_T_BREAK || track == BS_T_KICK || track == BS_T_SNARE;
+        if (!(st->flags & JS_ON)) { st->lvl = 0; continue; }
+        if (st->ratch) st->lvl = 4;
+        else if (track == BS_T_GHOST || st->vel < 50u) st->lvl = 3;
+        else if ((pos & 3u) == 0u) st->lvl = (uint8_t)(core ? 1 : 2);
+        else if ((pos & 1u) == 0u) st->lvl = 2;
+        else st->lvl = (uint8_t)(core ? 3 : 4);
+    }
+}
+void bs_auto_levels(bs_engine_t *e, int track)
+{
+    uint32_t f = lock_fn();
+    auto_levels_track(&e->pat[e->cur_pat].t[(uint32_t)track % BS_NTRACKS], (uint32_t)track % BS_NTRACKS);
+    unlock_fn(f);
+}
+
+void bs_route_live(bs_engine_t *e, uint32_t mask, uint8_t route)
+{
+    uint32_t t;
+    for (t = 0; t < BS_NTRACKS; t++)
+        if (mask >> t & 1u) e->seq.route_ovr[t] = route;
+}
+void bs_route_latch(bs_engine_t *e, uint32_t mask, uint8_t route)
+{
+    uint32_t t, f = lock_fn();
+    for (t = 0; t < BS_NTRACKS; t++)
+        if (mask >> t & 1u) {
+            e->pat[e->cur_pat].t[t].route = route < JS_NROUTES ? route : JS_R_FORWARD;
+            e->seq.route_ovr[t] = 0xFFu;
+        }
+    unlock_fn(f);
+}
+void bs_route_draw(bs_engine_t *e, uint32_t mask, const uint8_t *order, uint32_t n)
+{
+    uint32_t t, i, f = lock_fn();
+    if (n > JS_MAXSTEPS) n = JS_MAXSTEPS;
+    for (t = 0; t < BS_NTRACKS; t++)
+        if (mask >> t & 1u) {
+            js_track_t *tr = &e->pat[e->cur_pat].t[t];
+            for (i = 0; i < n; i++) tr->order[i] = order[i];
+            tr->route_len = (uint8_t)n;
+        }
+    unlock_fn(f);
+}
+uint32_t bs_route_at(const bs_engine_t *e, int track, uint32_t p)
+{
+    uint32_t t = (uint32_t)track % BS_NTRACKS;
+    const js_track_t *tr = &e->pat[e->cur_pat].t[t];
+    uint8_t r = e->seq.route_ovr[t] != 0xFFu ? e->seq.route_ovr[t] : tr->route;
+    uint32_t len = tr->len ? tr->len : 16u;
+    return r ? js_route_idx(tr, r, p, len, e->clock.abs_step >> 4, e->pat[e->cur_pat].seed) : p % len;
+}
+
+void bs_decay_bar(bs_engine_t *e)
+{
+    uint32_t t, f;
+    if (!e->decay_on) return;
+    f = lock_fn();
+    for (t = 0; t < BS_NTRACKS; t++) js_decay_pass(&e->pat[e->cur_pat].t[t], e->decay_amt);
+    unlock_fn(f);
+}
+void bs_burn_step(bs_engine_t *e, int track, int step)
+{
+    js_step_t *st = &e->pat[e->cur_pat].t[(uint32_t)track % BS_NTRACKS].s[(uint32_t)step % JS_MAXSTEPS];
+    uint32_t f = lock_fn();
+    st->flags = (uint8_t)((st->flags | JS_ON | JS_BURN) & ~JS_DECAY);
+    unlock_fn(f);
+}
+
+/* ---- DNA ---- */
+/* a child's mutation, on a pattern copy: the break's slices swapped for others of their class, drum hits moved a 16th
+ * (the beats kept), now and then a reverse or a ratchet; deterministic in seed */
+static void dna_mutate(const bs_engine_t *e, js_pattern_t *p, float amount, uint32_t seed)
+{
+    const jb_break_t *b = &e->breaks[e->cur_break];
+    uint32_t n = b->nslices ? b->nslices : 16u, t, i;
+    js_track_t *br = &p->t[BS_T_BREAK];
+    amount = jo_clampf(amount, 0.05f, 1.0f);
+    for (i = 0; i < (br->len ? br->len : 16u); i++) {
+        js_step_t *st = &br->s[i];
+        uint32_t h = js_hash(seed, i, 0x5EEDu, 1u), pick, tries;
+        if ((i & 3u) == 0u || unit(h) >= amount * 0.7f) continue;
+        pick = js_hash(seed, i, 2u, 3u) % n;
+        for (tries = 0; tries < 8u && b->cls[st->data % n] && b->cls[pick] != b->cls[st->data % n]; tries++)
+            pick = js_hash(seed, i, tries + 4u, 3u) % n;
+        st->data = (uint8_t)pick;
+        st->flags |= JS_ON;
+        if (unit(h * 3u + 1u) < amount * 0.15f) st->flags ^= JS_REVERSE;
+        if (unit(h * 5u + 2u) < amount * 0.12f) st->ratch = 1, st->lvl = 4;
+    }
+    for (t = BS_T_KICK; t < BS_NTRACKS; t++) {
+        js_track_t *tr = &p->t[t];
+        uint32_t len = tr->len ? tr->len : 16u, j;
+        for (i = 0; i < len; i++) {
+            uint32_t h = js_hash(seed, i, t, 0xD7Au);
+            if (!(tr->s[i].flags & JS_ON) || (i & 3u) == 0u || unit(h) >= amount * 0.35f) continue;
+            j = (i + ((h >> 3) & 1u ? 1u : len - 1u)) % len;
+            if (tr->s[j].flags & JS_ON || (j & 3u) == 0u) continue;
+            tr->s[j] = tr->s[i];
+            tr->s[j].data = (uint8_t)j;
+            js_step_clear(&tr->s[i]);
+            tr->s[i].data = (uint8_t)i;
+        }
+    }
+    p->seed = (uint16_t)(p->seed * 31u + seed);
+}
+
+void bs_dna_root(bs_engine_t *e, bs_dna_t *d)
+{
+    uint32_t i;
+    for (i = 0; i < BS_DNA_MAX; i++) d->g[i].used = 0;
+    d->g[0].pat = e->pat[e->cur_pat];
+    d->g[0].parent = -1;
+    d->g[0].used = 1;
+    d->g[0].keep = 0;
+    d->g[0].gen = 0;
+    d->g[0].born = 0;
+    d->births = 1;
+    d->playing = 0;
+}
+int bs_dna_count(const bs_dna_t *d)
+{
+    int i, n = 0;
+    for (i = 0; i < BS_DNA_MAX; i++) n += d->g[i].used != 0;
+    return n;
+}
+static int dna_has_child(const bs_dna_t *d, int i)
+{
+    int k;
+    for (k = 0; k < BS_DNA_MAX; k++)
+        if (d->g[k].used && d->g[k].parent == i) return 1;
+    return 0;
+}
+/* a free slot: an unused one, or the oldest unkept leaf that is not playing (and not the root) */
+static int dna_slot(bs_dna_t *d)
+{
+    int i, best = -1;
+    for (i = 0; i < BS_DNA_MAX; i++)
+        if (!d->g[i].used) return i;
+    for (i = 1; i < BS_DNA_MAX; i++)
+        if (!d->g[i].keep && i != d->playing && !dna_has_child(d, i) && (best < 0 || d->g[i].born < d->g[best].born)) best = i;
+    if (best >= 0) d->g[best].used = 0;
+    return best;
+}
+static int dna_child(bs_dna_t *d, int parent, const js_pattern_t *p)
+{
+    int i;
+    if (d->playing < 0 || parent < 0) return -1;
+    i = dna_slot(d);
+    if (i < 0) return -1;
+    d->g[i].pat = *p;
+    d->g[i].parent = (int8_t)parent;
+    d->g[i].used = 1;
+    d->g[i].keep = 0;
+    d->g[i].gen = (uint8_t)(d->g[parent].gen + 1u);
+    d->g[i].born = d->births++;
+    return i;
+}
+int bs_dna_breed(bs_engine_t *e, bs_dna_t *d, float amount, uint32_t seed)
+{
+    js_pattern_t p;
+    int i, par = d->playing;
+    if (par < 0 || !d->g[par].used) return -1;
+    p = d->g[par].pat;
+    dna_mutate(e, &p, amount, seed);
+    i = dna_child(d, par, &p);
+    if (i >= 0) bs_dna_select(e, d, i);
+    return i;
+}
+int bs_dna_cross(bs_engine_t *e, bs_dna_t *d, int a, int b)
+{
+    js_pattern_t p;
+    int i;
+    if (a < 0 || b < 0 || a >= BS_DNA_MAX || b >= BS_DNA_MAX || !d->g[a].used || !d->g[b].used) return -1;
+    p = d->g[a].pat;                             /* A's drums, swing and seed */
+    p.t[BS_T_BREAK] = d->g[b].pat.t[BS_T_BREAK]; /* B's break chops */
+    i = dna_child(d, a, &p);
+    if (i >= 0) bs_dna_select(e, d, i);
+    return i;
+}
+int bs_dna_select(bs_engine_t *e, bs_dna_t *d, int i)
+{
+    uint32_t f;
+    if (i < 0 || i >= BS_DNA_MAX || !d->g[i].used) return -1;
+    d->playing = (int8_t)i;
+    f = lock_fn();
+    if (e->clock.running) e->gen_next = &d->g[i].pat; /* at the next bar */
+    else { e->pat[e->cur_pat] = d->g[i].pat; e->gen_next = 0; }
+    unlock_fn(f);
+    return 0;
+}
+void bs_dna_keep(bs_dna_t *d, int i)
+{
+    if (i >= 0 && i < BS_DNA_MAX && d->g[i].used) d->g[i].keep ^= 1u;
+}
+int bs_dna_kill(bs_engine_t *e, bs_dna_t *d, int i)
+{
+    int k, changed = 1, play_gone, up;
+    if (i <= 0 || i >= BS_DNA_MAX || !d->g[i].used) return -1;
+    d->g[i].used = 2; /* marked, with its descendants */
+    while (changed) {
+        changed = 0;
+        for (k = 0; k < BS_DNA_MAX; k++)
+            if (d->g[k].used == 1 && d->g[k].parent >= 0 && d->g[(int)d->g[k].parent].used == 2) d->g[k].used = 2, changed = 1;
+    }
+    play_gone = d->playing >= 0 && d->g[(int)d->playing].used == 2;
+    up = d->g[i].parent;
+    for (k = 0; k < BS_DNA_MAX; k++)
+        if (d->g[k].used == 2) d->g[k].used = 0;
+    if (play_gone) bs_dna_select(e, d, up >= 0 ? up : 0);
+    return 0;
+}
+void bs_dna_store(bs_engine_t *e, const bs_dna_t *d, int i, int slot)
+{
+    uint32_t f;
+    if (i < 0 || i >= BS_DNA_MAX || !d->g[i].used || slot < 0 || slot >= BS_NPATTERNS) return;
+    f = lock_fn();
+    e->pat[slot] = d->g[i].pat;
+    unlock_fn(f);
 }
