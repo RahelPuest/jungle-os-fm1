@@ -682,6 +682,7 @@ TEST(test_ab_bass_width)
     for (b = 0; b < 200u; b++) {
         memset(w_bass, 0, sizeof w_bass); memset(w_sub, 0, sizeof w_sub);
         jn_bass_render(&v, &pt, (float)b * 128.0f / 3803.0f, 0.0f, w_bass, 128);
+        for (i = 0; i < 128u; i++) w_bass[i] *= jo_db2lin(ev.trim_db); /* the node's trim, as the engine applies it */
         for (k = 0; k < 2u; k++) {
             memset(w_l[k], 0, sizeof w_l[k]); memset(w_r[k], 0, sizeof w_r[k]);
             jf_neuro_process(&wn[k], w_sub, w_bass, w_l[k], w_r[k], 0, 128);
@@ -692,7 +693,10 @@ TEST(test_ab_bass_width)
             if (b > 20u) diff += (m0 - m1) * (m0 - m1), mid += m0 * m0, side += s1 * s1;
         }
     }
-    CHECKF(diff < 1e-3 * mid, "mono sum changed by the width: %g of %g", diff, mid);
+    /* the master's cubic soft clip is not linear at any level: (m + s)^3 + (m - s)^3 = 2 m^3 + 6 m s^2, so a side
+     * signal leaves a trace in the mono sum; 0.7.1's brighter two-saw REESE leaves ~-29 dB of it. The check holds
+     * the trace under -25 dB (it was -30 dB with 0.7's four darker saws) */
+    CHECKF(diff < 3e-3 * mid, "mono sum changed by the width: %g of %g", diff, mid);
     CHECKF(side > 1e-3 * mid, "the width makes side: %g of %g", side, mid);
 }
 

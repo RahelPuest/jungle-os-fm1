@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.1 (unreleased): a Reese, a hoover and a foghorn that sound like them
+
+Not installed on a physical FM-1; not checked by ear.
+
+Abyss Engine
+- **REESE rebuilt:** two free-running saws against each other (3–30 cents), the detune drifting slowly, a saw an
+  octave below; the REESE and REESE DARK sounds lose the quarter-note filter wobble (the LFO now moves over a bar).
+  0.7's four saws sounded like a chorus.
+- **HOOVER, a model of its own:** PWM saws on three octaves, the pulse width stirred by a fast LFO, a deep chorus,
+  a pitch envelope that dives from 5 semitones sharp onto the note (0.7 bent up from below, without chorus).
+- **FOGHORN rebuilt:** an octave below the note, three unison saw-squares with FM, a 24 dB low-pass that opens on
+  every note and closes over 1.5 s, two hard drive stages (after Attack Magazine's foghorn).
+- Trims re-measured (every sound -13 dBFS RMS on a held D2). The width check allows -25 dB of trace in the mono
+  sum (the master's cubic soft clip and the brighter Reese; it was -30 dB).
+- Measured on the host, per block: FOGHORN 9.8 us (before 10.4), HOOVER 6.6 (7.7), REESE 4.7 (6.6); GROWL stays
+  the dearest at 10.7. Not measured in fm1-emu.
+
 ## 0.7.0 (2026-11-11): the bass styles, a new kit, the classic breaks
 
 Not installed on a physical FM-1; the new sounds are not checked by ear.

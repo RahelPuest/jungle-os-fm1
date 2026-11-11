@@ -40,7 +40,8 @@ tutorials (the videos themselves could not be watched or transcribed from here).
   ([video](https://www.youtube.com/watch?v=AqzMLafeNCE)).
 - **Use:** long notes under the break, one or two notes a bar, slow slides between root, b7, b6, b3; the beating
   gives the movement, so the rhythm stays simple. Rollers: the same notes rolling for 16 or 32 bars.
-- **ABYSS ENGINE:** model REESE (four saws 4–40 cents apart, each drifting at its own slow rate); sounds ROLLER,
+- **ABYSS ENGINE:** model REESE (0.7.1: two free-running saws 3–30 cents apart, their detune drifting slowly, a saw
+  an octave below; 0.7's four saws sounded like a chorus, not a Reese); sounds ROLLER,
   REESE, REESE DARK; style ROLLING REESE.
 
 ### HOOVER / dark techstep Reese
@@ -51,7 +52,13 @@ tutorials (the videos themselves could not be watched or transcribed from here).
   ([video](https://www.youtube.com/watch?v=lysxHbtQxRc)).
 - **Use:** long, bending notes in dark minor (the b6 and the b2 give the tension), half-bar to two-bar lengths,
   gaps between them in techstep.
-- **ABYSS ENGINE:** REESE model with INDEX = the PWM blend and PITCH = the bend; sounds HOOVER, REESE DARK; styles
+- **The patch (0.7.1):** Eric Persing's Alpha Juno "What The": PWM sawtooths an octave apart, the pulse width
+  stirred by a fast LFO, a wide, deep chorus ("harder than feels polite"), a resonant low-pass, and a pitch envelope
+  that starts sharp and dives onto the note ([Bonedo](https://www.bonedo.de/artikel/origins-of-sound-der-hoover/),
+  [Music Production Wiki](https://musicproductionwiki.com/articles/how-to-recreate-the-hoover-sound)). No source
+  gives numbers; ours are a first guess.
+- **ABYSS ENGINE:** model HOOVER (0.7.1, its own: PWM saws on three octaves, PWM at 1.5–6 Hz, a two-tap chorus,
+  PITCH +5 diving in ~0.1 s; in 0.7 it was the REESE model with pulses and a bend from below); sounds HOOVER, REESE DARK; styles
   HOOVER, DARK TECHSTEP.
 
 ### NEURO GROWL and the switch-up
@@ -83,10 +90,14 @@ tutorials (the videos themselves could not be watched or transcribed from here).
   JUMP-UP WOMP, WOBBLE.
 
 ### FOGHORN
-- **Design:** a hollow square-ish horn, distorted, swelling open (genre practice; Stranjah's "Top 10 Bass Sounds"
-  covers the classic jump-up basses: [video](https://www.youtube.com/watch?v=CqFnOsymyNk)).
+- **Design (0.7.1):** a very low note (Attack Magazine plays F0) of a saw halfway to a square, FM from two octaves
+  up at about 30 %, three noisy unison voices, a 24 dB low-pass at about 200 Hz that opens on every note (23 ms)
+  and closes over seconds, then heavy multiband distortion, the lows cut and a sine sub on its own track: "a huge
+  blaaat that cuts through the mix" ([Attack Magazine](https://attackmagazine.com/?p=99684)). Stranjah's "Top 10
+  Bass Sounds" covers the classic jump-up basses: [video](https://www.youtube.com/watch?v=CqFnOsymyNk).
 - **Use:** one long note, then space for the drums; the next one lower.
-- **ABYSS ENGINE:** model HORN; sound FOGHORN; style FOGHORN.
+- **ABYSS ENGINE:** model HORN (0.7.1: an octave below the note, three unison saw-squares, FM, a 24 dB low-pass
+  from 160 Hz opening to ~1.4 kHz, two drive stages); sound FOGHORN; style FOGHORN.
 
 ### LIQUID ROLLER
 - **Design:** a warm, lightly saturated mid over the sub ([Soundbridge](https://www.soundbridge.io/liquid-grooves),

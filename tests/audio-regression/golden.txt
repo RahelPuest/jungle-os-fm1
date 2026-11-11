@@ -4,9 +4,9 @@ perf_modes f104da99
 kit_sweep_pressure 573ab4e3
 grooves 2356c5b3
 breaks 9a810d51
-C_growl_sub_stab_pad 35cfbc30
-D_kick_ducking 7a2f6467
-E_morph_fm_nodes 65e32ccf
-abuse_extremes 58e78418
-F_call_response 56d1c07f
-G_bass_styles 2c1a6f22
+C_growl_sub_stab_pad bcc25bec
+D_kick_ducking 9a27594a
+E_morph_fm_nodes 05cfbae5
+abuse_extremes 6f9c7f72
+F_call_response e55a6d7b
+G_bass_styles 36f181ec

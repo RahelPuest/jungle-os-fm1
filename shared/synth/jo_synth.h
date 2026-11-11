@@ -7,15 +7,21 @@
 #include "../dsp/jo_dsp.h"
 
 /* ---------------------------------------------------------- neuro bass --- */
-/* (0.7) the bass models:
+/* (0.7) the bass models (0.7.1: REESE, HORN rebuilt, HOOVER its own model):
  *   FM      two-operator FM with feedback (growls, talking basses, lasers, metallic neuro)
- *   REESE   four detuned saws drifting against each other (the phase movement), blended into PWM pulses for the
- *           hoover; RATIO = the detune (4..40 cents), INDEX = the PWM / hoover blend, FDBK = the drift
+ *   REESE   two saws detuned against each other, free-running, their detune drifting slowly (the phase
+ *           movement), and a saw an octave below; RATIO = the detune (3..30 cents), INDEX = the octave-down saw,
+ *           FDBK = the drift
  *   WOMP    saw / square with a per-note "wom" (the filter and the vowel open and close on every note) under the
  *           synced LFO: jump-up womps and wubs; INDEX = the square, FDBK = the wom's vowel depth
- *   HORN    detuned squares and an octave above, swelling open (the foghorn); INDEX = the octave, FDBK = the swell
- *   SINE    a driven sine (808, dub, rollers' clean mid) with a little FM grit (INDEX) */
-enum { JN_FM_CREATURE, JN_REESE, JN_WOMP, JN_HORN, JN_SINE, JN_NMODELS };
+ *   HORN    the foghorn: an octave down, three noisy unison saw-squares with FM from two octaves up, a 24 dB
+ *           low-pass that opens on every note and closes over seconds, then driven hard (the "blaaat"); INDEX =
+ *           the FM, FDBK = the unison spread
+ *   SINE    a driven sine (808, dub, rollers' clean mid) with a little FM grit (INDEX)
+ *   HOOVER  the Alpha Juno hoover: PWM saws on three octaves, the pulse width stirred by a fast LFO, a pitch
+ *           envelope that dives from sharp onto the note (PITCH > 0), a deep chorus; INDEX = the top octave, FDBK =
+ *           the PWM rate and depth */
+enum { JN_FM_CREATURE, JN_REESE, JN_WOMP, JN_HORN, JN_SINE, JN_HOOVER, JN_NMODELS };
 extern const char *const jn_model_name[JN_NMODELS];
 /* the bass parameter vector, as the sweetspot graph orders it (bass_params in jo_synth.c) */
 enum {
@@ -47,6 +53,7 @@ typedef struct {
     float coupling;       /* MOD COUPLING: how many destinations follow the LFO, 0..1 */
 } jn_patch_t;
 
+#define JN_CH_LEN 512u /* the hoover's chorus line: 11.6 ms */
 typedef struct {
     float freq, target, glide_k;
     float ph_c, ph_m, fb_y1, fb_y2;
@@ -63,6 +70,11 @@ typedef struct {
     float vel;
     float xfade, prev_out;   /* model-switch crossfade */
     uint8_t last_model;
+    /* (0.7.1) the foghorn's second low-pass stage and its filter attack; the hoover's PWM LFO and chorus */
+    jo_svf_t lp2;
+    float fatt, pwm_ph, ch_ph;
+    uint32_t ch_w;
+    float ch_buf[JN_CH_LEN];
 } jn_bass_t;
 
 extern const char *const jn_param_name[JN_NPARAMS];

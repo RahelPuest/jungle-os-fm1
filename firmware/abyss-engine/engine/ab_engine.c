@@ -7,7 +7,7 @@ enum { C_PLAY, C_BPM, C_NOTE, C_STAB, C_PAD, C_PATTERN, C_SCENE, C_PANIC, C_MUTE
 
 /* ----------------------------------------------------------- the graph --- */
 static const jg_param_t FMP[JN_NPARAMS] = {
-    {"MODEL", 0.0f, 4.0f, JG_DISCRETE, 0.0f},   {"RATIO", 0.5f, 8.0f, JG_LOG, 0.08f},
+    {"MODEL", 0.0f, 5.0f, JG_DISCRETE, 0.0f},   {"RATIO", 0.5f, 8.0f, JG_LOG, 0.08f},
     {"INDEX", 0.0f, 12.0f, JG_LIN, 0.15f},      {"FDBK", 0.0f, 0.85f, JG_LIN, 0.15f},
     {"VOWEL", 0.0f, 1.0f, JG_LIN, 0.3f},        {"FORMNT", 0.0f, 1.0f, JG_LIN, 0.25f},
     {"CUTOFF", 80.0f, 12000.0f, JG_LOG, 0.15f}, {"RES", 0.0f, 0.9f, JG_LIN, 0.15f},
@@ -19,27 +19,27 @@ static const jg_param_t FMP[JN_NPARAMS] = {
 };
 /* (0.7) the curated sounds: the drum & bass bass archetypes (docs/research/dnb-bass-styles.md), initial
  * hypotheses in physical units, UNREVIEWED until they pass the listening checklist (docs/development/sweetspots.md).
- * Order of the values: FMP above. Models: 0 FM, 1 REESE, 2 WOMP, 3 HORN, 4 SINE. The trims bring a held D2 to
+ * Order of the values: FMP above. Models: 0 FM, 1 REESE, 2 WOMP, 3 HORN, 4 SINE, 5 HOOVER. The trims bring a held D2 to
  * about -13 dBFS RMS (measured: tests/integration/test_ab_live.c test_ab_sounds prints them), a proxy for loudness
  * to be corrected by ear. MORPH's path: DUB .. SNARL, clean to dirty; the rest by the sound browser and EXPLORE */
 typedef struct { const char *n; float v[JN_NPARAMS]; float trim; } node_def_t;
 static const node_def_t FMN[] = {
     /*             MOD RATIO INDEX FDBK  VOWEL FORM  CUT      RES   DRIVE MENV  MDEC   DIV DEP   FOLD  GLIDE  PHAS  PITCH */
     {"DUB",        {4, 1.0f, 2.0f, 0.0f, 0.2f, 0.0f, 1200.0f, 0.1f, 2.5f, 0.1f, 0.2f,  2, 0.1f, 0.0f, 0.04f, 0.0f, 0.0f}, -3.5f},
-    {"ROLLER",     {1, 1.2f, 0.0f, 0.3f, 0.3f, 0.0f, 650.0f,  0.25f, 2.0f, 0.3f, 0.25f, 4, 0.15f, 0.0f, 0.05f, 0.0f, 0.0f}, 0.2f},
-    {"REESE",      {1, 3.0f, 0.0f, 0.55f, 0.4f, 0.0f, 1100.0f, 0.3f, 3.0f, 0.2f, 0.4f, 2, 0.3f, 0.05f, 0.06f, 0.25f, 0.0f}, 2.1f},
-    {"REESE DARK", {1, 6.0f, 0.0f, 0.7f, 0.2f, 0.15f, 480.0f, 0.45f, 4.5f, 0.25f, 0.6f, 1, 0.35f, 0.15f, 0.08f, 0.35f, 0.0f}, 3.7f},
-    {"HOOVER",     {1, 4.0f, 12.0f, 0.5f, 0.5f, 0.0f, 1700.0f, 0.2f, 3.0f, 0.3f, 0.5f, 0, 0.15f, 0.0f, 0.1f, 0.45f, -5.0f}, 2.6f},
+    {"ROLLER",     {1, 1.2f, 0.0f, 0.3f, 0.3f, 0.0f, 650.0f,  0.25f, 2.0f, 0.3f, 0.25f, 4, 0.15f, 0.0f, 0.05f, 0.0f, 0.0f}, 1.1f},
+    {"REESE",      {1, 2.6f, 4.0f, 0.4f, 0.4f, 0.0f, 900.0f,  0.35f, 4.0f, 0.15f, 0.4f, 0, 0.25f, 0.0f, 0.06f, 0.0f, 0.0f}, -1.4f},
+    {"REESE DARK", {1, 4.5f, 8.0f, 0.6f, 0.2f, 0.0f, 420.0f,  0.5f, 6.0f, 0.2f, 0.6f, 0, 0.3f, 0.1f, 0.08f, 0.3f, 0.0f}, -2.0f},
+    {"HOOVER",     {5, 1.0f, 6.0f, 0.5f, 0.5f, 0.0f, 2600.0f, 0.45f, 2.5f, 0.25f, 0.6f,  0, 0.1f, 0.0f, 0.12f, 0.0f, 5.0f}, 5.3f},
     {"GROWL",      {0, 0.5f, 5.0f, 0.45f, 0.3f, 0.6f, 1800.0f, 0.5f, 4.0f, 0.4f, 0.25f, 4, 0.55f, 0.2f, 0.05f, 0.2f, 0.0f}, 0.3f},
     {"TALK",       {0, 1.0f, 3.5f, 0.2f, 0.5f, 0.9f, 2500.0f, 0.45f, 2.5f, 0.3f, 0.2f, 3, 0.7f, 0.1f, 0.04f, 0.0f, 0.0f}, 0.5f},
     {"SNARL",      {0, 1.5f, 7.0f, 0.6f, 0.75f, 0.5f, 4000.0f, 0.55f, 6.0f, 0.5f, 0.12f, 6, 0.45f, 0.35f, 0.02f, 0.3f, 0.0f}, -3.6f},
     {"WOMP",       {2, 1.0f, 4.0f, 0.7f, 0.1f, 0.7f, 400.0f,  0.6f, 3.0f, 1.0f, 0.35f, 2, 0.2f, 0.0f, 0.06f, 0.4f, 0.0f}, 2.3f},
     {"WUB",        {2, 1.0f, 9.0f, 0.5f, 0.2f, 0.6f, 500.0f,  0.55f, 3.5f, 0.6f, 0.5f, 4, 0.9f, 0.1f, 0.05f, 0.5f, 0.0f}, 3.9f},
-    {"FOGHORN",    {3, 2.0f, 6.0f, 0.8f, 0.3f, 0.3f, 1500.0f, 0.3f, 6.0f, 0.2f, 0.9f, 0, 0.1f, 0.1f, 0.08f, 0.2f, 0.0f}, -1.7f},
+    {"FOGHORN",    {3, 2.0f, 4.0f, 0.5f, 0.3f, 0.0f, 160.0f,  0.3f, 9.0f, 0.7f, 1.5f, 0, 0.05f, 0.1f, 0.08f, 0.0f, 0.0f}, -5.3f},
     {"808",        {4, 1.0f, 4.0f, 0.0f, 0.0f, 0.0f, 2500.0f, 0.0f, 5.0f, 0.0f, 0.5f, 2, 0.0f, 0.0f, 0.1f, 0.0f, 12.0f}, -4.4f},
     {"LASER",      {0, 3.5f, 9.0f, 0.2f, 1.0f, 0.2f, 8000.0f, 0.7f, 2.5f, 0.9f, 0.08f, 7, 0.4f, 0.0f, 0.1f, 0.0f, 24.0f}, -3.7f},
     {"METALLIC",   {0, 2.7f, 6.0f, 0.3f, 0.9f, 0.3f, 6000.0f, 0.6f, 3.0f, 0.6f, 0.08f, 5, 0.3f, 0.1f, 0.01f, 0.4f, 0.0f}, -2.0f},
-    {"TECH STAB",  {1, 2.2f, 4.0f, 0.2f, 0.3f, 0.0f, 2200.0f, 0.35f, 5.0f, 0.8f, 0.12f, 0, 0.0f, 0.25f, 0.01f, 0.0f, 0.0f}, 5.2f},
+    {"TECH STAB",  {1, 2.2f, 4.0f, 0.2f, 0.3f, 0.0f, 2200.0f, 0.35f, 5.0f, 0.8f, 0.12f, 0, 0.0f, 0.25f, 0.01f, 0.0f, 0.0f}, 3.1f},
     {"BROKEN",     {0, 5.0f, 11.0f, 0.8f, 0.6f, 0.4f, 5000.0f, 0.4f, 8.0f, 0.3f, 0.1f, 6, 0.8f, 0.6f, 0.02f, 0.2f, 0.0f}, -4.5f},
 };
 #define NFMN (sizeof FMN / sizeof FMN[0])
