@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.0 (unreleased): the bass styles, a new kit, the classic breaks
+## 0.7.0 (2026-11-11): the bass styles, a new kit, the classic breaks
 
 Not installed on a physical FM-1; the new sounds are not checked by ear.
 

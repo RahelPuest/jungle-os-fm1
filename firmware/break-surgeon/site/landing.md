@@ -4,6 +4,8 @@ BREAK SURGEON is the rhythm half of JUNGLE OS, a drum & bass live rig of two M-V
 
 ![BREAK SURGEON's main page while playing: the BREAK track's 16 steps big, the seven tracks as rows below](img/home.png "BREAK SURGEON on the FM-1's screen")
 
+New in 0.7: a rebuilt kit (a kick with a held 56 Hz body, a snare with a clap layer, brighter hats), a console EQ on the bus, the break ducking under the synth kick, six synthesized classic breaks (AMEN, THINK, APACHE, FUNKY DRUMMER, HOT PANTS, ROLLER: the patterns only, not the recordings; ALGO on the BREAK track's SOUND page) and 18 grooves, among them LIQUID, NEURO and two jungle edits.
+
 New in 0.6: ROUTES (hold SEQ: the playhead's path through the break, or one you draw), DNA (breed grooves in a family tree), ENERGY (hold HOME: every step a level 1–4, one knob for build-ups, shared with ABYSS ENGINE) and TAPE DECAY.
 
 New in 0.5: a step sequencer first. The white keys are always the selected track's steps, the black keys the tracks; the live tools sit on held buttons (hold FX: performance FX incl. TAPE STOP; hold ENV: four fill types; hold LFO: variations A-D and a FORM such as A B A C; hold ARP: scenes, patterns and mutes). REC records live, hold REC erases, trig conditions (1:4, FILL, PHRASE END …) on every step, DENSITY and HUMANIZE, 8-step undo and redo, autosave after STOP.
@@ -14,13 +16,13 @@ New in 0.3.1: the built-in break plays the Amen pattern at 170 BPM, synthesized 
 
 New in 0.2: a drum & bass kit. The kick is short and punchy at 55 Hz with a beater click. The snare has a body, a crack, a snap and a tail, and the ghosts are that snare played softly, a little late. Every drum's tone follows how hard it is hit. DRUM PRESSURE adds a room, a sampler's 12-bit grit and a glue that makes the kit denser instead of quieter. The controls are the same as ABYSS ENGINE's, and the screen shows what every key and encoder does, also with SEL or SAVE held.
 
-Version {{VERSION}}. **Not yet tested on a physical FM-1.** It is tested in software: 541 engine checks, audio-regression renders, fm1-base's host simulator and fm1-emu, an instruction-level emulator that runs the real firmware file. Installing it is at your own risk; the installer can put M-VAVE's own firmware back. Back up first.
+Version {{VERSION}}. **Not yet tested on a physical FM-1.** It is tested in software: 620 engine checks, audio-regression renders, fm1-base's host simulator and fm1-emu, an instruction-level emulator that runs the real firmware file. Installing it is at your own risk; the installer can put M-VAVE's own firmware back. Back up first.
 
 - [Try it in the browser](emu/): the same code the FM-1 runs, with sound and Web MIDI. No FM-1 needed.
 - [Manual](manual/): every page, button and key.
 - [Install](install/): from Chrome or Edge, with the FM-1 connected by USB.
 - [Download {{PKG}}](firmware/{{PKG}}): for the command-line installer, `python3 base/tools/fm1_install.py {{PKG}}`.
-- Earlier versions: [0.5.0](firmware/breaksurgeon-0.5.0.fwsc), [0.4.0](firmware/breaksurgeon-0.4.0.fwsc) (the 0.4 controls), [0.3.1](firmware/breaksurgeon-0.3.1.fwsc) (before the grooves), [0.3.0](firmware/breaksurgeon-0.3.0.fwsc) (the synthetic two-step break), [0.2.0](firmware/breaksurgeon-0.2.0.fwsc) (the 0.2 screens), [0.1.0-dev](firmware/breaksurgeon-0.1.0-dev.fwsc) (the first kit and controls).
+- Earlier versions: [0.6.0](firmware/breaksurgeon-0.6.0.fwsc), [0.5.0](firmware/breaksurgeon-0.5.0.fwsc), [0.4.0](firmware/breaksurgeon-0.4.0.fwsc) (the 0.4 controls), [0.3.1](firmware/breaksurgeon-0.3.1.fwsc) (before the grooves), [0.3.0](firmware/breaksurgeon-0.3.0.fwsc) (the synthetic two-step break), [0.2.0](firmware/breaksurgeon-0.2.0.fwsc) (the 0.2 screens), [0.1.0-dev](firmware/breaksurgeon-0.1.0-dev.fwsc) (the first kit and controls).
 - [ABYSS ENGINE](../abyss-engine/), the bass half, and [JUNGLE OS](../), both together.
 - [Source code on GitHub](https://github.com/RahelPuest/jungle-os-fm1).
 
