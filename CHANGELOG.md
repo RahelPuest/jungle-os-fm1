@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.1 (unreleased): a Reese, a hoover and a foghorn that sound like them
+## 0.7.1 (2026-11-11): a Reese, a hoover and a foghorn that sound like them
 
 Not installed on a physical FM-1; not checked by ear.
 

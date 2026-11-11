@@ -7,6 +7,8 @@ JUNGLE OS is two custom firmwares for two M-VAVE FM-1s that together make a hard
 
 Version {{VERSION}}. **Neither firmware has been tested on a physical FM-1 yet.** Both are tested in software: 620 engine checks, audio-regression renders, fm1-base's host simulator, and fm1-emu, an instruction-level emulator that runs the real firmware files. The two-FM-1 link is untested. Installing is at your own risk; the installer can put M-VAVE's own firmware back.
 
+**New in 0.7.1:** ABYSS ENGINE's Reese, hoover and foghorn rebuilt after the classic patches.
+
 **New in 0.7:** the sound. ABYSS ENGINE gets five bass models (FM NEURO, REESE, WOMP, HORN, SINE/808), sixteen drum & bass sounds from the rolling Reese and the hoover to the neuro growl, and thirteen STYLES that play each the way the genre does. BREAK SURGEON gets a rebuilt kit (kick, snare with a clap, hats), a console EQ on the bus, six synthesized classic breaks (AMEN, THINK, APACHE, FUNKY DRUMMER, HOT PANTS, ROLLER: the patterns, not the recordings) and 18 grooves with jungle edits.
 
 **New in 0.6:** the sequencers get ideas of their own. BREAK SURGEON cuts with ROUTES (the playhead's path through the break: snake, spiral, stutter, a random walk or one you draw) and breeds grooves in a DNA family tree. ABYSS ENGINE plays a DUET: it answers what you play, moves its bass into the gaps of the drums and echoes your gestures. One ENERGY joins both: every step has a level, one knob builds and drops the whole rig. TAPE DECAY lets recorded steps fade unless you burn them in.

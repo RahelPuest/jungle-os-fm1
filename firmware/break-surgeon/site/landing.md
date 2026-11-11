@@ -22,7 +22,7 @@ Version {{VERSION}}. **Not yet tested on a physical FM-1.** It is tested in soft
 - [Manual](manual/): every page, button and key.
 - [Install](install/): from Chrome or Edge, with the FM-1 connected by USB.
 - [Download {{PKG}}](firmware/{{PKG}}): for the command-line installer, `python3 base/tools/fm1_install.py {{PKG}}`.
-- Earlier versions: [0.6.0](firmware/breaksurgeon-0.6.0.fwsc), [0.5.0](firmware/breaksurgeon-0.5.0.fwsc), [0.4.0](firmware/breaksurgeon-0.4.0.fwsc) (the 0.4 controls), [0.3.1](firmware/breaksurgeon-0.3.1.fwsc) (before the grooves), [0.3.0](firmware/breaksurgeon-0.3.0.fwsc) (the synthetic two-step break), [0.2.0](firmware/breaksurgeon-0.2.0.fwsc) (the 0.2 screens), [0.1.0-dev](firmware/breaksurgeon-0.1.0-dev.fwsc) (the first kit and controls).
+- Earlier versions: [0.7.0](firmware/breaksurgeon-0.7.0.fwsc), [0.6.0](firmware/breaksurgeon-0.6.0.fwsc), [0.5.0](firmware/breaksurgeon-0.5.0.fwsc), [0.4.0](firmware/breaksurgeon-0.4.0.fwsc) (the 0.4 controls), [0.3.1](firmware/breaksurgeon-0.3.1.fwsc) (before the grooves), [0.3.0](firmware/breaksurgeon-0.3.0.fwsc) (the synthetic two-step break), [0.2.0](firmware/breaksurgeon-0.2.0.fwsc) (the 0.2 screens), [0.1.0-dev](firmware/breaksurgeon-0.1.0-dev.fwsc) (the first kit and controls).
 - [ABYSS ENGINE](../abyss-engine/), the bass half, and [JUNGLE OS](../), both together.
 - [Source code on GitHub](https://github.com/RahelPuest/jungle-os-fm1).
 
