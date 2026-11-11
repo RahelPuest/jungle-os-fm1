@@ -160,8 +160,8 @@ static void ui_label(int32_t x0, int32_t x1, int32_t y, const char *t, uint16_t 
     ui_fit(x, y, w, &FONT_T, t, c);
 }
 
-/* enc: what SELECT, ALGO and PRESET do (0: nothing); layer: 0 plain, 1 SEL held, 2 SAVE held */
-static void ui_strip(const char *const enc[3], const ui_kg_t *g, uint32_t n, int layer)
+/* enc: what SELECT, ALGO and PRESET do (0: nothing); layer: the held layer's name ("SEL", "FX", ...), 0: none */
+static void ui_strip(const char *const enc[3], const ui_kg_t *g, uint32_t n, const char *layer)
 {
     static const char *const EN[3] = {"SELECT", "ALGO", "PRESET"};
     uint16_t wc[16], bc[11];
@@ -176,8 +176,11 @@ static void ui_strip(const char *const enc[3], const ui_kg_t *g, uint32_t n, int
         ui_fit(x, 2, x1 - x, &FONT_T, enc[i] ? enc[i] : "-", enc[i] ? (layer ? C_WHITE : C_AMB) : C_DIM);
     }
     if (layer) { /* the layer's name, so it is clear why the strip changed */
-        const char *t = layer == 1 ? "SEL HELD" : "SAVE HELD";
-        int32_t w = text_w(&FONT_T, t) + 6;
+        char t[16] = "";
+        int32_t w;
+        ui_cat(t, layer);
+        ui_cat(t, " HELD");
+        w = text_w(&FONT_T, t) + 6;
         cv_rect(238 - w, 13, w, 11, C_HI);
         cv_text(241 - w, 13, &FONT_T, t, C_BLACK);
     }
@@ -261,6 +264,61 @@ static void ui_steps(int32_t y, int32_t h, const uint8_t on[16], int play, int s
             cv_rect(x - 1, y - 1, 15, 1, C_WHITE);
             cv_rect(x - 1, y + h, 15, 1, C_WHITE);
         }
+    }
+}
+
+/* (0.5) the sequencer's main view: one track's 16 steps big, two rows of 8 at canvas y (each box 28 x 22): on[i]
+ * 0 off, 1 on, 2 accent; vel[i] 0..127 as a bar in the box; mark[i] bits: 1 a lock, 2 a condition, 4 probability
+ * under 100 %, 8 a slide / open hat; play = the playhead (-1), held = a held step (-1). The beats' boxes have a tick */
+#define UI_GRID_H 50
+static void ui_grid(int32_t y, const uint8_t on[16], const uint8_t vel[16], const uint8_t mark[16], int play, int held)
+{
+    uint32_t i;
+    for (i = 0; i < 16u; i++) {
+        int32_t x = 4 + (int32_t)(i & 7u) * 29, yy = y + (int32_t)(i >> 3) * 26, h;
+        uint16_t c = on[i] == 0 ? C_LINE : on[i] == 2 ? C_WHITE : C_HI;
+        cv_rect(x, yy, 27, 22, (int)i == held ? C_WHITE : C_BLACK);
+        cv_rect(x + 1, yy + 1, 25, 20, on[i] ? C_BLACK : C_LINE);
+        if (on[i]) {
+            h = 2 + (int32_t)(vel[i] * 16u / 127u);
+            cv_rect(x + 3, yy + 19 - h, 21, h, c);
+        }
+        if (mark[i] & 1u) cv_rect(x + 2, yy + 2, 4, 4, RGB(150, 225, 255)); /* lock */
+        if (mark[i] & 2u) cv_rect(x + 21, yy + 2, 4, 4, UI_RED);            /* condition */
+        if (mark[i] & 4u) cv_rect(x + 12, yy + 2, 3, 3, C_GRAY);            /* probability */
+        if (mark[i] & 8u) cv_rect(x + 3, yy + 20, 21, 1, C_WHITE);          /* slide / open */
+        if ((i & 3u) == 0u) cv_rect(x, yy + 23, 27, 1, C_DIM);              /* the beat */
+        if ((int)i == play) cv_rect(x, yy + 23, 27, 2, C_WHITE);
+    }
+}
+
+/* (0.5) a box over the page: a title line and a value line (a held step's edit, a held layer's state) */
+static void ui_popup(int32_t y, const char *title, const char *line)
+{
+    cv_rect(10, y, 220, 34, C_BLACK);
+    cv_rect(10, y, 220, 1, C_HI);
+    cv_rect(10, y + 33, 220, 1, C_HI);
+    cv_rect(10, y, 1, 34, C_HI);
+    cv_rect(229, y, 1, 34, C_HI);
+    ui_fit(16, y + 3, 208, &FONT_XS, title ? title : "", C_GRAY);
+    ui_fit(16, y + 15, 208, &FONT_S, line ? line : "", C_WHITE);
+}
+
+/* (0.5) a held layer's banner across the page's top: the name between hazard stripes */
+static void ui_banner(const char *name, const char *hint)
+{
+    int32_t w;
+    cv_rect(0, 0, 240, 18, C_BLACK);
+    ui_stripes(0, 0, 240, 18, C_HI);
+    w = text_w(&FONT_B, name) + 12;
+    if (w > 150) w = 150;
+    cv_rect(4, 1, w, 16, C_BLACK);
+    ui_fit(10, 2, w - 10, &FONT_B, name, C_HI);
+    if (hint) {
+        int32_t hw = text_w(&FONT_T, hint) + 8;
+        if (hw > 230 - w) hw = 230 - w;
+        cv_rect(236 - hw, 3, hw, 12, C_BLACK);
+        ui_fit(240 - hw, 4, hw - 6, &FONT_T, hint, C_WHITE);
     }
 }
 

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include "../jo_test.h"
 #include "../../shared/seq/jo_seq.h"
+#include "../../shared/seq/jo_undo.h"
 
 static js_pattern_t P;
 static js_clock_t C;
@@ -158,8 +159,47 @@ TEST(test_midi_clock_follow)
     CHECKF(fabsf(C.bpm - 172.0f) < 0.3f, "bpm %f", (double)C.bpm);
 }
 
+/* (0.5) trig conditions on the global bar grid, and the undo / redo stack */
+TEST(test_conditions)
+{
+    CHECK(js_cond_ok(JS_C_1_4, 0, 0, 4) && !js_cond_ok(JS_C_1_4, 1, 0, 4) && js_cond_ok(JS_C_1_4, 4, 0, 4));
+    CHECK(js_cond_ok(JS_C_2_2, 1, 0, 4) && !js_cond_ok(JS_C_2_2, 2, 0, 4));
+    CHECK(js_cond_ok(JS_C_FILL, 3, 1, 4) && !js_cond_ok(JS_C_FILL, 3, 0, 4) && js_cond_ok(JS_C_NOT_FILL, 3, 0, 4));
+    CHECK(js_cond_ok(JS_C_LAST, 7, 0, 8) && !js_cond_ok(JS_C_LAST, 3, 0, 8) && js_cond_ok(JS_C_FIRST, 8, 0, 8));
+    CHECK(js_cond_ok(JS_C_ALWAYS, 5, 1, 4));
+}
+static js_pattern_t up[2];
+static ju_stack_t us;
+TEST(test_undo_stack)
+{
+    uint8_t slot = 9, extra = 1;
+    uint32_t i;
+    js_pattern_clear(&up[0], 2, 16);
+    js_pattern_clear(&up[1], 2, 16);
+    ju_init(&us);
+    CHECK(ju_undo(&us, up, 0, 0, &slot) == -1 && !ju_can_redo(&us));
+    ju_push(&us, 1, &up[1], &extra, 1);
+    up[1].swing = 60; extra = 2;
+    ju_push(&us, 1, &up[1], &extra, 1);
+    up[1].swing = 70; extra = 3;
+    CHECK(ju_undo(&us, up, &extra, 1, &slot) == 0 && slot == 1 && up[1].swing == 60 && extra == 2);
+    CHECK(ju_undo(&us, up, &extra, 1, &slot) == 0 && up[1].swing == 50 && extra == 1);
+    CHECK(ju_undo(&us, up, &extra, 1, &slot) == -1);
+    CHECK(ju_redo(&us, up, &extra, 1, &slot) == 0 && up[1].swing == 60 && extra == 2);
+    CHECK(ju_redo(&us, up, &extra, 1, &slot) == 0 && up[1].swing == 70 && extra == 3);
+    CHECK(ju_redo(&us, up, &extra, 1, &slot) == -1);
+    /* a new change after an undo drops the redo; the stack keeps the newest JU_DEPTH */
+    ju_undo(&us, up, &extra, 1, &slot);
+    ju_push(&us, 0, &up[0], 0, 0);
+    CHECK(!ju_can_redo(&us));
+    for (i = 0; i < 20u; i++) ju_push(&us, 0, &up[0], 0, 0);
+    CHECK(us.cur == JU_DEPTH);
+}
+
 void run_seq(void)
 {
+    RUN(test_conditions);
+    RUN(test_undo_stack);
     RUN(test_step_timing_174);
     RUN(test_long_run_no_drift);
     RUN(test_swing_micro_ratchet);

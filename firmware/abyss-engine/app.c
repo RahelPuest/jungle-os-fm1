@@ -713,7 +713,7 @@ static void draw_strip(void)
             break;
         }
     }
-    ui_strip(enc, g, n, layer);
+    ui_strip(enc, g, n, layer == 2 ? "SAVE" : layer == 1 ? "SEL" : 0);
 }
 
 static void draw_footer(void)

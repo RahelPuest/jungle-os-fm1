@@ -31,7 +31,17 @@ typedef struct {
     uint8_t data;             /* the instrument's: a slice number, a note */
     uint8_t lk_id[JS_NLOCK];  /* locked parameter ids, JS_LOCK_NONE = free */
     uint8_t lk_val[JS_NLOCK]; /* their values, 0..255 */
+    uint8_t cond;             /* (0.5) a trig condition, JS_C_* (JS_C_ALWAYS: none) */
 } js_step_t;
+
+/* (0.5) trig conditions: when a step plays. N:M = the Nth bar of every M (bars counted on the global 16th grid, so
+ * both FM-1s agree); FILL / NO FILL = while a fill plays or not; PHRASE 1ST / PHRASE END = the first / last bar of
+ * the phrase (js_seq_t.phrase bars) */
+enum { JS_C_ALWAYS, JS_C_1_2, JS_C_2_2, JS_C_1_4, JS_C_2_4, JS_C_3_4, JS_C_4_4, JS_C_FILL, JS_C_NOT_FILL,
+       JS_C_FIRST, JS_C_LAST, JS_NCOND };
+extern const char *const js_cond_name[JS_NCOND];
+/* does a step with condition c play in bar `bar` (abs_step / 16), with fill on or off, in a phrase of `phrase` bars */
+int js_cond_ok(uint8_t c, uint32_t bar, int fill, uint32_t phrase);
 
 typedef struct {
     js_step_t s[JS_MAXSTEPS];
@@ -98,6 +108,8 @@ typedef struct {
     uint8_t solo;              /* bitmask, if nonzero only these play */
     uint16_t pos[JS_MAXTRACKS];/* current step index per track */
     uint32_t sub[JS_MAXTRACKS];/* per-track sub-step counters for div != 0 */
+    uint8_t fill;              /* (0.5) a fill plays (the instrument sets it): for JS_C_FILL / JS_C_NOT_FILL */
+    uint8_t phrase;            /* (0.5) the phrase in bars (4, 8, 16): for JS_C_FIRST / JS_C_LAST */
 } js_seq_t;
 
 void js_seq_init(js_seq_t *s, const js_pattern_t *p);

@@ -89,6 +89,7 @@ void js_step_clear(js_step_t *st)
     st->micro = 0;
     st->data = 0;
     st->lk_id[0] = st->lk_id[1] = JS_LOCK_NONE;
+    st->cond = JS_C_ALWAYS;
     st->lk_val[0] = st->lk_val[1] = 0;
 }
 
@@ -184,12 +185,35 @@ int js_queue_pop_due(js_queue_t *q, uint32_t before, js_event_t *out)
     return 1;
 }
 
+/* ------------------------------------------------------- trig conditions --- */
+const char *const js_cond_name[JS_NCOND] = {"ALWAYS", "1:2", "2:2", "1:4", "2:4", "3:4", "4:4", "FILL", "NO FILL",
+                                           "PHRASE 1ST", "PHRASE END"};
+int js_cond_ok(uint8_t c, uint32_t bar, int fill, uint32_t phrase)
+{
+    if (!phrase) phrase = 4u;
+    switch (c) {
+    case JS_C_1_2: return (bar & 1u) == 0u;
+    case JS_C_2_2: return (bar & 1u) == 1u;
+    case JS_C_1_4: return (bar & 3u) == 0u;
+    case JS_C_2_4: return (bar & 3u) == 1u;
+    case JS_C_3_4: return (bar & 3u) == 2u;
+    case JS_C_4_4: return (bar & 3u) == 3u;
+    case JS_C_FILL: return fill != 0;
+    case JS_C_NOT_FILL: return fill == 0;
+    case JS_C_FIRST: return bar % phrase == 0u;
+    case JS_C_LAST: return bar % phrase == phrase - 1u;
+    default: return 1;
+    }
+}
+
 /* -------------------------------------------------------------- sequencer --- */
 void js_seq_init(js_seq_t *s, const js_pattern_t *p)
 {
     uint32_t t;
     s->pat = p;
     s->mute = s->solo = 0;
+    s->fill = 0;
+    s->phrase = 4;
     for (t = 0; t < JS_MAXTRACKS; t++)
         s->pos[t] = 0, s->sub[t] = 0;
 }
@@ -215,6 +239,8 @@ static void queue_track(js_seq_t *s, js_queue_t *q, uint32_t t, uint32_t idx, ui
     if (h && h->transform && !h->transform(h->ctx, t, abs_step, &copy))
         return;
     if (!(st->flags & JS_ON))
+        return;
+    if (st->cond && !js_cond_ok(st->cond, abs_step >> 4, s->fill, s->phrase))
         return;
     if (st->prob < 100u && (js_hash(p->seed, abs_step >> 4, idx, t) % 100u) >= st->prob)
         return;
