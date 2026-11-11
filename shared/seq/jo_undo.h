@@ -8,7 +8,7 @@
 #include "jo_seq.h"
 
 #define JU_DEPTH 8
-#define JU_EXTRA 64
+#define JU_EXTRA 80
 typedef struct {
     js_pattern_t pat;
     uint8_t slot;                 /* which of the instrument's patterns */

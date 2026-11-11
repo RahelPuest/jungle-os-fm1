@@ -1,6 +1,6 @@
 # ABYSS ENGINE
 
-ABYSS ENGINE is the bass half of JUNGLE OS, a drum & bass live rig of two M-VAVE FM-1s. Its neuro bass (FM CREATURE, REESE MATRIX) moves through a curated graph of ten sweetspot sounds with MORPH, SNAP, EXPLORE, MUTATE and UNDO, so it is played rather than programmed. A separate clean mono sub stays below it, untouched by width or distortion. There are rave, orchestral, glass and dark stabs, a four-voice evolving pad, a harmonic sequencer on a shared key with slides and locks, ducking from BREAK SURGEON's kicks, six scenes and the bass-safe NEURO PRESSURE master. It works alone, and with BREAK SURGEON on a second FM-1 over JUNGLE LINK.
+ABYSS ENGINE is the bass half of JUNGLE OS, a drum & bass live rig of two M-VAVE FM-1s. Its bass has five models (FM NEURO, REESE, WOMP, HORN, SINE) and sixteen curated sounds for the drum & bass archetypes, from the rolling Reese and the hoover to the neuro growl, the jump-up womp, the foghorn and the 808, and STYLES that play each the way the genre does. A separate clean mono sub stays below it, untouched by width or distortion. There are rave, orchestral, glass and dark stabs, a four-voice evolving pad, a harmonic sequencer on a shared key with slides and locks, ducking from BREAK SURGEON's kicks, six scenes and the bass-safe NEURO PRESSURE master. It works alone, and with BREAK SURGEON on a second FM-1 over JUNGLE LINK.
 
 ![ABYSS ENGINE's main page: the bass line with its notes](img/home.png "ABYSS ENGINE on the FM-1's screen")
 

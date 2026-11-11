@@ -12,7 +12,7 @@ static ab_engine_t eng PLAT_POOL;
 static int16_t fx_pool[AB_POOL_SAMPLES] PLAT_POOL; /* the delay's lines and the reverb: 96 KiB */
 static ju_stack_t undo PLAT_POOL;                 /* UNDO / REDO: 8 patterns and their sound states, 23 KiB */
 
-#define SET_MAGIC 0x34534241u /* "ABS4" (0.6: ENERGY, DUET, TAPE DECAY) */
+#define SET_MAGIC 0x35534241u /* "ABS5" (0.7: the new sounds and styles) */
 typedef struct {
     float bpm, morph, motion, bite, space, duck_depth;
     jf_neuro_macros_t fx;
@@ -65,6 +65,8 @@ static struct {
     int8_t fx_key;                     /* the white key holding a performance FX (-1) */
     uint8_t vary;                      /* VARY: the variation picked last (its LINE / SOUND on ALGO / K4) */
     uint8_t lib_line, lib_stab, lib_pad;
+    uint8_t snd;                      /* (0.7) the SOUND page's sound browser: the last sound picked */
+    uint32_t hint_until;              /* (0.7) a style's name and hint shown over the page until then */
     uint32_t stop_ms;                  /* when the transport stopped (autosave 3 s later) */
     uint8_t song_page;                 /* (0.6) SONG's knobs: 0 the form and the link, 1 DECAY, POCKET, ECHO */
     uint8_t burned;                    /* (0.6) the held step was burned in (TAPE DECAY) */
@@ -107,7 +109,7 @@ static void settings_defaults(void)
 {
     uint32_t i;
     set.bpm = 174.0f;
-    set.morph = 0.4f, set.motion = 0.5f, set.bite = 0.3f, set.space = 0.4f;
+    set.morph = 2.0f / 7.0f, set.motion = 0.5f, set.bite = 0.3f, set.space = 0.4f;
     set.duck_depth = 0.6f;
     set.fx.weight = 0.5f, set.fx.dirt = 0.3f, set.fx.width = 0.4f, set.fx.pressure = 0.4f, set.fx.trim_db = 0.0f;
     set.stab.model = JN_STAB_RAVE, set.stab.chord = 0.3f, set.stab.attack = 0.1f, set.stab.bite = 0.5f, set.stab.tail = 0.4f;
@@ -275,6 +277,7 @@ void app_init(void)
     eng.midi_out = link_out;
     ju_init(&undo);
     load_all();
+    ui.lib_line = 0xFFu; /* (0.7) no style loaded yet: ALGO starts at the first */
     ui.held_step = -1;
     ui.hi_macro = -1;
     ui.fx_key = -1;
@@ -346,6 +349,15 @@ static void var_line_name(char *t, int line)
     ui_cat(t, PAT_NAME[line % AB_NPATTERNS]);
 }
 static const char *var_node_name(int node) { return node < 0 ? "A" : eng.fm.node[node].name; }
+/* (0.7) A's sound (the one the SOUND page's browser sets; a FORM's answers may be playing their own) */
+static uint32_t a_sound(void)
+{
+    jg_eval_t ev;
+    if (eng.explore_node >= 0) return (uint32_t)eng.explore_node;
+    jg_eval(&eng.fm, eng.morph, &ev);
+    return ev.near;
+}
+
 static const char *lib_name(void)
 {
     if (ui.track == AB_T_BASS) return ab_line_name[ui.lib_line % AB_NLINES];
@@ -756,13 +768,28 @@ static void input(void)
             ab_set_form(&eng, jo_clampi(eng.form + (d > 0 ? 1 : -1), 0, AB_NFORMS - 1));
             app_say("FORM", ab_form_name[eng.form]);
         } else if (ui.page == PG_SYSTEM) eng.duck_internal = d > 0;
-        else if (ui.page == PG_SOUND && ui.track == AB_T_STAB)
+        else if (ui.page == PG_SOUND && ui.track == AB_T_BASS) { /* (0.7) every sound by name */
+            undo_push();
+            ui.snd = (uint8_t)a_sound(); /* from A's sound */
+            ui.snd = (uint8_t)((ui.snd + (d > 0 ? 1u : eng.fm.nnodes - 1u)) % eng.fm.nnodes);
+            {
+                uint32_t i;
+                eng.mutated = 0;
+                eng.explore_node = -1;
+                for (i = 0; i < eng.fm.npath; i++)
+                    if (eng.fm.path[i] == ui.snd) break;
+                if (i < eng.fm.npath) eng.morph = jg_path_t(&eng.fm, i);
+                else eng.explore_node = (int8_t)ui.snd;
+            }
+            app_say("SOUND", eng.fm.node[ui.snd].name);
+        } else if (ui.page == PG_SOUND && ui.track == AB_T_STAB)
             eng.stab_p.model = (uint8_t)((eng.stab_p.model + (d > 0 ? 1u : JN_STAB_NMODELS - 1u)) % JN_STAB_NMODELS);
         else if (ui.page == PG_SOUND) eng.chord = (uint8_t)jo_clampi(eng.chord + (d > 0 ? 1 : -1), 0, JH_NCHORDS - 1);
         else { /* the library: the next / previous starting point for the track */
             undo_push();
             if (ui.track == AB_T_BASS) {
-                ui.lib_line = (uint8_t)((ui.lib_line + (d > 0 ? 1u : AB_NLINES - 1u)) % AB_NLINES);
+                ui.lib_line = ui.lib_line >= AB_NLINES ? (uint8_t)(d > 0 ? 0u : AB_NLINES - 1u) /* the first: from the top */
+                                                       : (uint8_t)((ui.lib_line + (d > 0 ? 1u : AB_NLINES - 1u)) % AB_NLINES);
                 ab_load_line(&eng, ui.lib_line);
             } else if (ui.track == AB_T_STAB) {
                 ui.lib_stab = (uint8_t)((ui.lib_stab + (d > 0 ? 1u : AB_NRHYTHMS - 1u)) % AB_NRHYTHMS);
@@ -772,6 +799,7 @@ static void input(void)
                 ab_load_rhythm(&eng, AB_T_PAD, ui.lib_pad);
             }
             app_say(lib_name(), "SEL+LFO: UNDO");
+            if (ui.track == AB_T_BASS) ui.hint_until = plat_ms() + 2200u; /* (0.7) the style's how-to */
         }
         dirty = 1;
         ui.redraw = 1;
@@ -1105,13 +1133,15 @@ static void draw_sound(void)
     uint32_t i;
     ui_fit(6, 2, 80, &FONT_M, ab_track_name[ui.track], C_HI);
     if (ui.track == AB_T_STAB) ui_fit(90, 8, 234 - 90, &FONT_B, jn_stab_name[eng.stab_p.model], C_AMB);
-    else if (ui.track == AB_T_BASS) ui_fit(90, 8, 234 - 90, &FONT_B, eng.fv.phys[JN_P_MODEL] > 0.5f ? "REESE MATRIX" : "FM CREATURE", C_AMB);
-    t[0] = 0; ui_cat(t, "KEY "); ui_cat(t, NOTE_NAME[(eng.root % 12 + 12) % 12]); ui_cat(t, " "); ui_cat(t, jh_scale_name[eng.scale]);
-    ui_cat(t, "  CHORD "); ui_cat(t, jh_chord_name[eng.chord]);
+    else if (ui.track == AB_T_BASS) ui_fit(90, 8, 234 - 90, &FONT_B, eng.fm.node[a_sound()].name, C_AMB);
+    t[0] = 0;
+    if (ui.track == AB_T_BASS) { ui_cat(t, jn_model_name[jo_clampi((int32_t)eng.fv.phys[JN_P_MODEL], 0, JN_NMODELS - 1)]); ui_cat(t, "  "); }
+    ui_cat(t, "KEY "); ui_cat(t, NOTE_NAME[(eng.root % 12 + 12) % 12]); ui_cat(t, " "); ui_cat(t, jh_scale_name[eng.scale]);
+    if (ui.track != AB_T_BASS) { ui_cat(t, "  CHORD "); ui_cat(t, jh_chord_name[eng.chord]); }
     ui_fit(6, 30, 234 - 6, &FONT_S, t, C_GRAY);
     if (ui.track == AB_T_BASS)
         for (i = 0; i < JN_NPARAMS; i++) { /* the patch as the graph gives it now */
-            int32_t x = 6 + (int32_t)(i % 3u) * 78, y = 50 + (int32_t)(i / 3u) * 13;
+            int32_t x = 6 + (int32_t)(i % 3u) * 78, y = 48 + (int32_t)(i / 3u) * 11;
             ui_fit(x, y, 40, &FONT_XS, jn_param_name[i], C_DIM);
             ui_meter(x + 42, y + 5, 30, eng.fv.norm[i], C_AMB);
         }
@@ -1217,6 +1247,8 @@ static void draw_body(void)
         case PG_SYSTEM: draw_system(); break;
         default: draw_main(); break;
         }
+    if (ui.hint_until && plat_ms() < ui.hint_until && l == L_NONE && ui.held_step < 0) /* (0.7) a style: how it is played */
+        ui_popup(76, ab_line_name[ui.lib_line % AB_NLINES], ab_style_hint[ui.lib_line % AB_NLINES]);
     cv_blit(0, UI_BODY_Y);
 }
 
@@ -1267,11 +1299,11 @@ static void draw_strip(void)
             if (ui.held_step >= 0) g[n++] = (ui_kg_t)UI_B(3, 4, "ACC/SLIDE");
         }
         if (ui.held_step >= 0) { enc[1] = "CONDITION"; enc[2] = "OCTAVE"; }
-        else if (ui.page == PG_SOUND) { enc[0] = "TRACK"; enc[1] = ui.track == AB_T_STAB ? "MODEL" : "CHORD"; enc[2] = "ROOT"; }
+        else if (ui.page == PG_SOUND) { enc[0] = "TRACK"; enc[1] = ui.track == AB_T_STAB ? "MODEL" : ui.track == AB_T_BASS ? "SOUND" : "CHORD"; enc[2] = "ROOT"; }
         else if (ui.page == PG_SONG) { enc[0] = "TRACK"; enc[1] = "FORM"; enc[2] = "PATTERN"; }
         else if (ui.page == PG_SYSTEM) { enc[0] = "DUCK"; enc[1] = "SOLO DUCK"; enc[2] = "USB HOST"; }
         else if (ui.page == PG_FX) { enc[0] = "TRACK"; enc[1] = "LIBRARY"; enc[2] = "TRIM"; }
-        else { enc[0] = "TRACK"; enc[1] = "LIBRARY"; enc[2] = "PATTERN"; }
+        else { enc[0] = "TRACK"; enc[1] = ui.track == AB_T_BASS ? "STYLE" : "LIBRARY"; enc[2] = "PATTERN"; }
         break;
     }
     ui_strip(enc, g, n, l ? LAYER_NAME[l] : 0);

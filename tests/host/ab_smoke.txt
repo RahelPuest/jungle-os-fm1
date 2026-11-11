@@ -875,3 +875,85 @@ wait 80
 tap HOME
 tap PLAY
 wait 300
+# (0.7) the STYLES (ALGO on the BASS track, each with its hint) and the SOUND page's sound browser (every sound)
+# (GESTURE ECHO and ANSWER ME off first, so the sounds shown are the ones picked)
+press SEQ
+turn K4 -1
+turn K1 -1
+release SEQ
+wait 100
+tap HOME
+tapkey b0
+tap PLAY
+wait 200
+turn ALGO 1
+wait 400
+shot ab_style.png
+turn ALGO 1
+wait 400
+turn ALGO 1
+wait 400
+turn ALGO 1
+wait 400
+turn ALGO 1
+wait 400
+turn ALGO 1
+wait 400
+turn ALGO 1
+wait 400
+turn ALGO 1
+wait 400
+turn ALGO 1
+wait 400
+turn ALGO 1
+wait 400
+turn ALGO 1
+wait 400
+turn ALGO 1
+wait 400
+turn ALGO 1
+wait 400
+wait 2500
+tap EDIT
+tapkey b0
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+shot ab_sound_reese.png
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+turn ALGO 1
+wait 150
+press SEL
+tap LFO
+release SEL
+wait 200
+tap HOME
+tap PLAY
+wait 300

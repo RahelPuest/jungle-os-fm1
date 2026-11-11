@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.7.0 (unreleased): the bass styles
+
+Not installed on a physical FM-1; the new sounds are not checked by ear.
+
+Abyss Engine
+- **A new bass voice, five models:** FM NEURO; a real REESE (four saws 4–40 cents apart, each drifting at its own slow
+  rate, blended into PWM pulses for the hoover); WOMP (the filter and the vowel open and close on every note, under the
+  synced LFO); HORN (detuned squares and an octave, swelling open); SINE (a driven sine; its pitch drop is the sub's
+  too: the 808). A phaser and a pitch envelope on every model. Mid-bass width above ~250 Hz into the side only (FX
+  WIDTH; the mono sum and the sub are unchanged).
+- **Sixteen sounds** for the drum & bass archetypes: DUB, ROLLER, REESE, REESE DARK, HOOVER, GROWL, TALK, SNARL (the
+  MORPH path), WOMP, WUB, FOGHORN, 808, LASER, METALLIC, TECH STAB, BROKEN; trims measured to -13 dBFS on a held D2.
+  The default sound is REESE; B's default answer REESE DARK.
+- **STYLES on ALGO** (replacing the line library): a sound, a line (16 or 32 steps, accents, slides, octave jumps,
+  ENERGY levels), a FORM and its answers' sounds, the way each archetype is played: ROLLING REESE, DARK TECHSTEP,
+  HOOVER, NEURO SWITCH, TALKER, JUMP-UP WOMP, WOBBLE, FOGHORN, LIQUID ROLLER, 808 HALF-TIME, JUNGLE DUB, LASER ZAPS,
+  RUFIGE STAB; a box on the screen says how it is played; undoable.
+- **The SOUND page browses every sound by name** (ALGO on BASS).
+- Pattern P1's MORPH locks are gone (the knob's sound plays throughout).
+- docs/research/dnb-bass-styles.md: the archetypes, how each is made and played, with sources.
+- Saved settings from 0.6 load as defaults once (the sounds are new).
+- Tests: every sound (finite, no DC, bounded, top-octave energy, trim within 1.5 dB), the width's mono safety, the
+  styles (in the scale, their sounds and answers); a render of every style (`G_bass_styles`). Abyss's renders change
+  on purpose; Break Surgeon's are unchanged.
+
 ## 0.6.0 (2026-11-11): routes, DNA, duet, energy, tape decay
 
 Still not installed on a physical FM-1. The sound at the defaults is unchanged (every render keeps its hash).

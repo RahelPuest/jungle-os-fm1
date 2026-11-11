@@ -41,7 +41,7 @@ Two custom firmwares for two M-VAVE FM-1s that together make a hardware drum & b
   SNARE, METAL HATS, BREAK PERC, IMPACT FX) on one sample-accurate step sequencer, with performance modes (ROLL,
   CHOP, REVERSE, GLITCH, DESTROY, FREEZE), fills, ghost generation, mutation with anchors and undo, BREAK-LOCK,
   rhythm and kit sweetspot graphs, six scenes, and the DRUM PRESSURE master bus.
-- **ABYSS ENGINE** — a neuro bass (FM CREATURE, REESE MATRIX) navigated through a curated sweetspot graph (MORPH,
+- **ABYSS ENGINE** — a bass with five models (FM NEURO, REESE, WOMP, HORN, SINE) and sixteen drum & bass sounds with STYLES, navigated through a curated sweetspot graph (MORPH,
   SNAP, EXPLORE, MUTATE, UNDO), a separate clean mono sub, rave/orchestral/glass/dark stabs, an evolving pad, a
   harmonic sequencer on a shared key, ducking from Break Surgeon's kicks, and the bass-safe NEURO PRESSURE master.
 

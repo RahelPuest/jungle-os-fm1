@@ -8,7 +8,9 @@
 #include "jo_synth.h"
 
 const char *const jn_param_name[JN_NPARAMS] = {"MODEL", "RATIO", "INDEX", "FDBK", "VOWEL", "FORMNT", "CUTOFF", "RES",
-                                               "DRIVE", "MODENV", "MODDEC", "LFODIV", "LFODEP", "FOLD", "GLIDE"};
+                                               "DRIVE", "MODENV", "MODDEC", "LFODIV", "LFODEP", "FOLD", "GLIDE",
+                                               "PHASER", "PITCH"};
+const char *const jn_model_name[JN_NMODELS] = {"FM NEURO", "REESE", "WOMP", "HORN", "SINE"};
 
 /* ---------------------------------------------------------- neuro bass --- */
 /* formant pairs (F1, F2) for u o a e i, Hz: averaged adult values, rounded */
@@ -34,9 +36,11 @@ void jn_bass_note(jn_bass_t *v, float note, float vel, int legato, const jn_patc
     if (!legato) {
         v->freq = v->target;
         v->modenv = 1.0f;
+        v->pe = p->p[JN_P_PITCH];
         jo_adsr_gate(&v->amp, 1);
     }
     v->modenv_mul = jo_decay_mul(p->p[JN_P_MODDEC]);
+    v->pe_mul = jo_decay_mul(jo_maxf(p->p[JN_P_MODDEC] * 0.5f, 0.01f));
     v->vel = jo_clampf(vel, 0.0f, 1.0f);
     v->gate = 1;
 }
@@ -63,48 +67,117 @@ static float lfo_shape(float ph, float shape, float *held, uint32_t *last, uint3
     }
 }
 
+/* a square from two band-limited saws half a cycle apart */
+static float sq_blep(float ph, float dt) { return 0.5f * (jo_saw_blep(ph, dt) - jo_saw_blep(jo_wrap1(ph + 0.5f), dt)); }
+
 void jn_bass_render(jn_bass_t *v, const jn_patch_t *p, float steps_now, float sps_inv, float *out, uint32_t n)
 {
-    uint32_t i;
-    int model = (int)p->p[JN_P_MODEL];
+    /* REESE: the four saws' detune positions (of the spread) and their drifts' rates (Hz): never in step */
+    static const float RS_POS[4] = {-1.0f, -0.33f, 0.37f, 1.0f};
+    static const float RS_RATE[4] = {0.11f, 0.19f, 0.27f, 0.41f};
+    uint32_t i, k;
+    int model = jo_clampi((int32_t)p->p[JN_P_MODEL], 0, JN_NMODELS - 1);
     float ratio = p->p[JN_P_RATIO], index = p->p[JN_P_INDEX], fbk = jo_clampf(p->p[JN_P_FEEDBACK], 0.0f, 0.85f);
+    float fb01 = fbk * (1.0f / 0.85f), ix01 = jo_clampf(index * (1.0f / 12.0f), 0.0f, 1.0f);
     float vowel = jo_clampf(p->p[JN_P_VOWEL], 0.0f, 1.0f) * 3.999f;
-    uint32_t vi = (uint32_t)vowel;
-    float vf = vowel - (float)vi;
+    uint32_t vi;
+    float vf;
     float lfo_steps = LFO_STEPS[jo_clampi((int32_t)p->p[JN_P_LFODIV], 0, 7)];
     float depth = p->p[JN_P_LFODEPTH] * (0.3f + 0.7f * p->motion);
     float coup = jo_clampf(p->coupling, 0.0f, 1.0f);
     float drive = p->p[JN_P_DRIVE], fold = p->p[JN_P_FOLD], fmix = p->p[JN_P_FORMANT];
+    float phas = jo_clampf(p->p[JN_P_PHASER], 0.0f, 1.0f);
     float outc = 1.0f / jo_tanh(drive * 0.6f);
     /* the per-block modulation (control rate: one block = 2.9 ms) */
     float lph = steps_now / lfo_steps;
     float lfo = lfo_shape(lph - jo_floorf(lph), p->lfo_shape, &v->lfo_held, &v->lfo_last_step,
                           (uint32_t)(steps_now * 4.0f / lfo_steps));
-    float me = v->modenv * p->p[JN_P_MODENV];
+    float m0 = v->modenv, me = m0 * p->p[JN_P_MODENV];
     float idx_mod = index * (1.0f + depth * lfo) + 6.0f * me;
-    float cut = p->p[JN_P_CUTOFF] * jo_exp2f(depth * coup * lfo * 2.0f + me * 3.0f);
-    float g_lp = jo_svf_g(cut), res = p->p[JN_P_RES];
-    float vw = jo_clampf(vowel + depth * coup * lfo * 1.5f, 0.0f, 3.999f);
-    float g1, g2;
+    float oct = depth * coup * lfo * 2.0f + me * 3.0f, vmod = depth * coup * lfo * 1.5f;
+    float g_lp, res = p->p[JN_P_RES], vw, g1, g2, ap_a = 0.0f;
+    float rs_mul[4] = {1.0f, 1.0f, 1.0f, 1.0f}, pw = 0.5f, hz_det = 1.0f;
     (void)sps_inv;
+    if (model == JN_WOMP) { /* the wom: the filter and the vowel open and close on every note */
+        float wom = p->p[JN_P_MODENV] * 4.0f * m0 * (1.0f - m0);
+        oct = depth * coup * lfo * 2.5f + wom * 4.0f;
+        vmod = depth * coup * lfo * 1.5f + wom * fb01 * 2.5f;
+    } else if (model == JN_HORN) { /* the swell: dark at the onset, opening as the envelope falls */
+        oct = depth * coup * lfo * 2.0f - m0 * fb01 * 3.0f + me;
+    } else if (model == JN_REESE) {
+        float cents = 4.0f + (jo_clampf(ratio, 0.5f, 8.0f) - 0.5f) * (36.0f / 7.5f);
+        for (k = 0; k < 4u; k++) {
+            float off = RS_POS[k] * cents + fb01 * 0.45f * cents * jo_sin_turns(v->drift_ph[k]);
+            rs_mul[k] = jo_exp2f(off * (1.0f / 1200.0f));
+            v->drift_ph[k] = jo_wrap1(v->drift_ph[k] + RS_RATE[k] * (float)n * JO_INV_SR);
+        }
+        pw = 0.5f + 0.32f * jo_sin_turns(v->drift_ph[1] + 0.25f); /* the PWM, slow */
+    }
+    if (model == JN_HORN) hz_det = jo_exp2f((jo_clampf(ratio, 0.5f, 8.0f) - 0.5f) * (12.0f / 7.5f) / 1200.0f);
+    g_lp = jo_svf_g(p->p[JN_P_CUTOFF] * jo_exp2f(oct));
+    vw = jo_clampf(vowel + vmod, 0.0f, 3.999f);
     vi = (uint32_t)vw;
     vf = vw - (float)vi;
     g1 = jo_svf_g(jo_lerpf(VOWEL[vi][0], VOWEL[vi + 1u][0], vf));
     g2 = jo_svf_g(jo_lerpf(VOWEL[vi][1], VOWEL[vi + 1u][1], vf));
+    if (phas > 0.0f) { /* the phaser's centre: swept by the LFO, nasal and static without it */
+        float t = jo_svf_g(900.0f * jo_exp2f(depth * lfo * 1.6f));
+        ap_a = (t - 1.0f) / (t + 1.0f);
+    }
     if (model != v->last_model) { /* a model switch: crossfade from the last output over ~5 ms */
         v->last_model = (uint8_t)model;
         v->xfade = 0.0f;
     }
     if (v->amp.stage == 0 && v->xfade >= 1.0f) {
         v->modenv *= jo_exp2f((float)n * jo_log2f(v->modenv_mul + 1e-9f));
+        v->pe = 0.0f;
         return;
     }
     for (i = 0; i < n; i++) {
         float e = jo_adsr_tick(&v->amp), s, x;
         float f = v->freq;
         v->freq += (v->target - v->freq) * v->glide_k;
-        if (model == JN_FM_CREATURE) {
-            /* Carson: the sidebands reach about (index + 1) * fm; keep them under 0.42 fs */
+        if (v->pe > 0.003f || v->pe < -0.003f) { /* the pitch envelope */
+            f *= jo_exp2f(v->pe * (1.0f / 12.0f));
+            v->pe *= v->pe_mul;
+        }
+        switch (model) {
+        case JN_REESE: {
+            float acc = 0.0f, pacc = 0.0f;
+            for (k = 0; k < 4u; k++) {
+                float d = f * rs_mul[k] * JO_INV_SR;
+                float sw;
+                v->ph_r[k] = jo_wrap1(v->ph_r[k] + d);
+                sw = jo_saw_blep(v->ph_r[k], d);
+                acc += sw;
+                if (ix01 > 0.0f) pacc += 0.5f * (sw - jo_saw_blep(jo_wrap1(v->ph_r[k] + pw), d));
+            }
+            s = jo_lerpf(acc * 0.32f, pacc * 0.42f, ix01);
+            break;
+        }
+        case JN_WOMP: {
+            float d = f * JO_INV_SR;
+            v->ph_c = jo_wrap1(v->ph_c + d);
+            s = jo_lerpf(jo_saw_blep(v->ph_c, d), sq_blep(v->ph_c, d), ix01) * 0.8f;
+            break;
+        }
+        case JN_HORN: {
+            float d0 = f * hz_det * JO_INV_SR, d1 = f / hz_det * JO_INV_SR, d2 = 2.0f * f * JO_INV_SR;
+            v->ph_r[0] = jo_wrap1(v->ph_r[0] + d0);
+            v->ph_r[1] = jo_wrap1(v->ph_r[1] + d1);
+            v->ph_r[2] = jo_wrap1(v->ph_r[2] + d2);
+            s = 0.45f * (sq_blep(v->ph_r[0], d0) + sq_blep(v->ph_r[1], d1)) + ix01 * 0.4f * sq_blep(v->ph_r[2], d2);
+            break;
+        }
+        case JN_SINE: {
+            float m;
+            v->ph_c = jo_wrap1(v->ph_c + f * JO_INV_SR);
+            m = jo_sin_turns(v->ph_c);
+            s = jo_sin_turns(v->ph_c + index * 0.012f * m);
+            break;
+        }
+        default: {
+            /* FM: Carson: the sidebands reach about (index + 1) * fm; keep them under 0.42 fs */
             float fm = f * ratio;
             float lim = (0.42f * JO_SR) / (fm + 1.0f) - 1.0f;
             float ix = jo_clampf(idx_mod, 0.0f, jo_maxf(lim, 0.0f));
@@ -115,15 +188,8 @@ void jn_bass_render(jn_bass_t *v, const jn_patch_t *p, float steps_now, float sp
             v->fb_y1 = m;
             v->ph_c = jo_wrap1(v->ph_c + f * JO_INV_SR);
             s = jo_sin_turns(v->ph_c + ix * m * 0.159155f);
-        } else {
-            /* REESE: three saws spread by RATIO's position (cents), INDEX blends an octave-down saw */
-            float spread = (ratio - 0.5f) * (1.0f / 7.5f) * 0.012f + 0.002f; /* 0.2 % .. 1.4 % */
-            float d0 = f * JO_INV_SR, d1 = d0 * (1.0f + spread), d2 = d0 * (1.0f - spread * 0.93f);
-            v->ph_r[0] = jo_wrap1(v->ph_r[0] + d0 * 0.5f);
-            v->ph_r[1] = jo_wrap1(v->ph_r[1] + d1);
-            v->ph_r[2] = jo_wrap1(v->ph_r[2] + d2);
-            s = 0.5f * (jo_saw_blep(v->ph_r[1], d1) + jo_saw_blep(v->ph_r[2], d2)) +
-                jo_clampf(index * (1.0f / 12.0f), 0.0f, 1.0f) * 0.5f * jo_saw_blep(v->ph_r[0], d0 * 0.5f);
+            break;
+        }
         }
         if (fold > 0.0f)
             s = jo_lerpf(s, jo_fold(s * (1.0f + 4.0f * fold)), fold);
@@ -131,6 +197,17 @@ void jn_bass_render(jn_bass_t *v, const jn_patch_t *p, float steps_now, float sp
         if (fmix > 0.0f) {
             jo_svf_out_t a = jo_svf(&v->f1, s, g1, 0.75f), b = jo_svf(&v->f2, s, g2, 0.75f);
             s = jo_lerpf(s, (a.bp + 0.7f * b.bp) * 1.6f, fmix);
+        }
+        /* the phaser: four allpasses with feedback, summed with the dry signal (the notches) */
+        if (phas > 0.0f) {
+            float y = s + 0.55f * phas * v->ap_fb, o;
+            for (k = 0; k < 4u; k++) {
+                o = ap_a * y + v->ap[k];
+                v->ap[k] = y - ap_a * o;
+                y = o;
+            }
+            v->ap_fb = jo_sane(y);
+            s = jo_lerpf(s, 0.5f * (s + y), phas);
         }
         x = jo_svf(&v->lp, s, g_lp, res).lp;
         x = jo_tanh(x * drive * 0.6f) * outc * 0.5f;
@@ -168,10 +245,17 @@ void jn_sub_note(jn_sub_t *s, float note, float glide_s, int legato)
     s->target = f;
     s->glide_k = legato ? jo_tau_coef(jo_maxf(glide_s * 0.33f, 0.0005f), JO_SR) : 1.0f;
     if (!legato) s->freq = s->target; /* the phase runs on: no restart click */
+    s->pe = 0.0f;
     s->gate = 1;
 }
 
 void jn_sub_off(jn_sub_t *s) { s->gate = 0; }
+
+void jn_sub_pitch_env(jn_sub_t *s, float semis, float decay_s)
+{
+    s->pe = semis;
+    s->pe_mul = jo_decay_mul(jo_maxf(decay_s, 0.01f));
+}
 
 void jn_sub_render(jn_sub_t *s, float *out, uint32_t n)
 {
@@ -184,7 +268,11 @@ void jn_sub_render(jn_sub_t *s, float *out, uint32_t n)
     for (i = 0; i < n; i++) {
         float x, t;
         s->freq += (s->target - s->freq) * s->glide_k;
-        s->ph = jo_wrap1(s->ph + s->freq * JO_INV_SR);
+        if (s->pe > 0.003f || s->pe < -0.003f) { /* (0.7) the 808's drop */
+            s->ph = jo_wrap1(s->ph + s->freq * jo_exp2f(s->pe * (1.0f / 12.0f)) * JO_INV_SR);
+            s->pe *= s->pe_mul;
+        } else
+            s->ph = jo_wrap1(s->ph + s->freq * JO_INV_SR);
         s->env += ((s->gate ? 1.0f : 0.0f) - s->env) * (s->gate ? s->att_k : s->rel_k);
         x = jo_sin_turns(s->ph);
         t = 4.0f * jo_absf(s->ph - 0.5f) - 1.0f; /* triangle, a touch of odd harmonics for small speakers */

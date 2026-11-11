@@ -280,9 +280,9 @@ TEST(test_call_response)
     CHECK(a_is_p1);
     CHECK(same_ab);
     CHECK(c_is_p2);
-    CHECKF(strcmp(AB.fm.node[cr_node[1]].name, "REESE") == 0, "B sounds as %s", AB.fm.node[cr_node[1]].name);
+    CHECKF(strcmp(AB.fm.node[cr_node[1]].name, "REESE DARK") == 0, "B sounds as %s", AB.fm.node[cr_node[1]].name);
     CHECKF(strcmp(AB.fm.node[cr_node[3]].name, "LASER") == 0, "C sounds as %s", AB.fm.node[cr_node[3]].name);
-    CHECKF(strcmp(AB.fm.node[cr_node[2]].name, "REESE") != 0 && strcmp(AB.fm.node[cr_node[2]].name, "LASER") != 0,
+    CHECKF(strcmp(AB.fm.node[cr_node[2]].name, "REESE DARK") != 0 && strcmp(AB.fm.node[cr_node[2]].name, "LASER") != 0,
            "A again sounds as %s", AB.fm.node[cr_node[2]].name);
     /* off: the pattern alone again */
     ab_set_cr(&AB, 0);

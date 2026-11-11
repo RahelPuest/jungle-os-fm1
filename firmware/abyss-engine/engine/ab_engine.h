@@ -40,10 +40,13 @@ extern const char *const ab_fx_name[AB_NFX];
  * SLIDE DOWN (every note slides down the scale) */
 enum { AB_FILL_ROLLS, AB_FILL_OCTAVES, AB_FILL_DROP, AB_FILL_SLIDE, AB_NFILLS };
 extern const char *const ab_fill_name[AB_NFILLS];
-/* (0.5) the library: bass lines (scale-aware) and chord rhythms for STAB and PAD */
-#define AB_NLINES 8
+/* (0.5) the library: bass lines (scale-aware) and chord rhythms for STAB and PAD. (0.7) The bass's entries are
+ * STYLES: a sound, a line (16 or 32 steps, accents, slides, octave jumps), a FORM and the answers' sounds, the way
+ * the drum & bass archetype is played (docs/research/dnb-bass-styles.md); ab_style_hint says how in one line */
+#define AB_NLINES 13
 #define AB_NRHYTHMS 5
 extern const char *const ab_line_name[AB_NLINES];
+extern const char *const ab_style_hint[AB_NLINES];
 extern const char *const ab_stab_rhythm_name[AB_NRHYTHMS];
 extern const char *const ab_pad_rhythm_name[AB_NRHYTHMS];
 /* (0.6) DUET: ANSWER ME's transforms of the bar you played */
@@ -208,6 +211,7 @@ void ab_master_update(ab_engine_t *e);
 void ab_scene_store(ab_engine_t *e, int s);
 void ab_default_patterns(ab_engine_t *e);
 const char *ab_node_name(const ab_engine_t *e);  /* the nearest node's name */
+int ab_node_find(const ab_engine_t *e, const char *name); /* (0.7) a sound by name, or -1 */
 /* CALL & RESPONSE: the part of the form (0 A, 1 B, 2 C) that 16th abs plays */
 int ab_cr_part(const ab_engine_t *e, uint32_t abs);
 void ab_set_cr(ab_engine_t *e, int on);          /* FORM A B A C on, or FORM OFF */
@@ -227,8 +231,14 @@ int ab_density(ab_engine_t *e, int track, int dir);
 /* REC: a note (BASS: MIDI note; STAB / PAD: MIDI note, written as the nearest scale degree) into the track's step
  * nearest to now, quantized; returns the step written or -1 (stopped) */
 int ab_record(ab_engine_t *e, int track, int note, float vel);
-/* the sound state UNDO saves with a pattern (shared/seq/jo_undo.h's extra blob: 62 bytes) */
-typedef struct { float v[JN_NPARAMS]; int8_t explore; uint8_t mutated; } ab_sound_state_t;
+/* the sound state UNDO saves with a pattern (shared/seq/jo_undo.h's extra blob, <= JU_EXTRA bytes) */
+typedef struct {
+    float v[JN_NPARAMS];
+    float morph;                       /* (0.7) and what a STYLE sets: MORPH, the FORM, B C D's sounds */
+    int8_t explore;
+    uint8_t mutated, form;
+    int8_t var_node[AB_NVAR - 1];
+} ab_sound_state_t;
 void ab_sound_get(const ab_engine_t *e, ab_sound_state_t *s);
 void ab_sound_set(ab_engine_t *e, const ab_sound_state_t *s);
 /* (0.6) ENERGY: the knob (main loop; sends CC 109 when its value changes), the curve (AB_CURVE_*), the levels of a

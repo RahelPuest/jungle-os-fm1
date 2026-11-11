@@ -3,8 +3,9 @@ B_mutate_undo_scene 241bc4a1
 perf_modes f75cd411
 kit_sweep_pressure 105b04c5
 grooves ef5a9195
-C_growl_sub_stab_pad 5c9423b4
-D_kick_ducking 6303569b
-E_morph_fm_nodes 74f1c295
-abuse_extremes ba350fe8
-F_call_response 24a4f547
+C_growl_sub_stab_pad 35cfbc30
+D_kick_ducking 7a2f6467
+E_morph_fm_nodes 65e32ccf
+abuse_extremes 58e78418
+F_call_response 56d1c07f
+G_bass_styles 2c1a6f22

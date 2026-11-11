@@ -14,7 +14,7 @@
 #pragma once
 #include "../dsp/jo_math.h"
 
-#define JG_MAXPARAMS 16
+#define JG_MAXPARAMS 18
 #define JG_MAXNODES 16
 #define JG_MAXEDGES 32
 #define JG_MAXPATH 8

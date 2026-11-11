@@ -67,7 +67,7 @@ TEST(test_ab_form_variations)
     CHECK(bar_is_line(1, &L.pat[0].t[AB_T_BASS]));
     CHECK(bar_is_line(2, &L.pat[1].t[AB_T_BASS]));
     CHECK(bar_is_line(3, &L.pat[2].t[AB_T_BASS]));
-    CHECKF(strcmp(L.fm.node[node[1]].name, "REESE") == 0, "B as %s", L.fm.node[node[1]].name);
+    CHECKF(strcmp(L.fm.node[node[1]].name, "REESE DARK") == 0, "B as %s", L.fm.node[node[1]].name);
     CHECKF(strcmp(L.fm.node[node[2]].name, "LASER") == 0, "C as %s", L.fm.node[node[2]].name);
     CHECKF(strcmp(L.fm.node[node[3]].name, "GROWL") == 0, "D as %s", L.fm.node[node[3]].name);
     /* the other forms on the bar grid */
@@ -350,15 +350,28 @@ TEST(test_ab_library)
         const js_track_t *t = &L.pat[0].t[AB_T_BASS];
         uint32_t on = 0;
         ab_load_line(&L, (int)l);
-        for (s = 0; s < 16u; s++)
+        for (s = 0; s < t->len; s++)
             if (t->s[s].flags & JS_ON) {
                 int note = L.root + (int)t->s[s].data - 64;
                 on++;
                 if (jh_snap(L.root, L.scale, note) != note) ok = 0; /* in the scale */
             }
-        if (!on || t->len != 16u) ok = 0;
+        if (!on || (t->len != 16u && t->len != 32u)) ok = 0;
+        /* (0.7) a style: its sound sounding (on MORPH's path or held by EXPLORE), its answers' sounds found */
+        {
+            uint32_t k;
+            int near = L.explore_node >= 0 ? L.explore_node : -1;
+            if (near < 0) { jg_eval_t ev; jg_eval(&L.fm, L.morph, &ev); near = ev.near; }
+            if (!ab_style_hint[l] || near < 0) ok = 0;
+            for (k = 0; k < AB_NVAR - 1u; k++) if (L.cr[k].node < 0) ok = 0;
+        }
     }
     CHECK(ok);
+    /* a style's sound by name: ROLLING REESE plays REESE (on the path), JUMP-UP WOMP holds WOMP (off it) */
+    ab_load_line(&L, 0);
+    { jg_eval_t ev; jg_eval(&L.fm, L.morph, &ev); CHECK(L.explore_node < 0 && strcmp(L.fm.node[ev.near].name, "REESE") == 0); }
+    ab_load_line(&L, 5);
+    CHECK(L.explore_node >= 0 && strcmp(L.fm.node[L.explore_node].name, "WOMP") == 0 && L.form == AB_FORM_AAAB);
     ab_load_rhythm(&L, AB_T_PAD, 2);
     CHECK(L.pat[0].t[AB_T_PAD].len == 32u && (L.pat[0].t[AB_T_PAD].s[8].flags & JS_ON) && L.pat[0].t[AB_T_PAD].s[24].data == 6);
     ab_load_rhythm(&L, AB_T_STAB, 4);
@@ -555,13 +568,13 @@ TEST(test_ab_gesture_echo)
     go_to(24);
     ab_set_perf(&L, AB_FX_NONE);
     go_to(40);
-    ab_gesture_knob(&L, 0, 1.0f);    /* CHAR to the top (MORPH stays 0.4) */
+    ab_gesture_knob(&L, 0, 1.0f);    /* CHAR to the top (MORPH stays at REESE, 2/7) */
     go_to(64u + 12u);
     CHECKF(L.perf == AB_FX_OCT_UP, "the FX came back (%d)", L.perf);
     go_to(64u + 20u);
     CHECKF(L.perf == AB_FX_NONE, "for half as long (%d)", L.perf);
     go_to(64u + 44u);
-    CHECKF(fabsf(L.echo_off[0] - 0.5f * (1.0f - 0.4f)) < 0.01f, "the knob at half depth %f", (double)L.echo_off[0]);
+    CHECKF(fabsf(L.echo_off[0] - 0.5f * (1.0f - 2.0f / 7.0f)) < 0.01f, "the knob at half depth %f", (double)L.echo_off[0]);
     go_to(128u + 44u);
     CHECK(L.echo_off[0] == 0.0f && L.perf == AB_FX_NONE); /* nothing played in that phrase: nothing comes back */
     /* off: no echo */
@@ -597,8 +610,96 @@ TEST(test_ab_tape_decay)
     CHECK((b->flags & JS_ON) && b->vel == 124);       /* burned in: it stays */
 }
 
+/* (0.7) every sound: a held D2 (and a D4 for aliasing) through the bass voice alone, as test_E_morph_loudness
+ * measures the path: finite, no DC, bounded, the trimmed RMS near -13 dBFS (prints the raw and trimmed RMS, the
+ * numbers the trims in ab_engine.c come from), little energy near Nyquist */
+static float snd_buf[44118];
+static float snd_rms(ab_engine_t *e, uint32_t node, float note, float *peak, float *dc, float *hf)
+{
+    jg_eval_t ev;
+    double sq = 0.0, sum = 0.0, hsq = 0.0;
+    float x1 = 0.0f, pk = 0.0f;
+    uint32_t i, n = 44118u / 128u * 128u;
+    jg_eval_node(&e->fm, node, &ev);
+    jn_bass_init(&e->bass);
+    for (i = 0; i < JN_NPARAMS; i++) e->patch.p[i] = ev.phys[i];
+    e->patch.motion = 0.5f; e->patch.coupling = 0.6f; e->patch.lfo_shape = 0.0f;
+    jn_bass_note(&e->bass, note, 1.0f, 0, &e->patch);
+    memset(snd_buf, 0, sizeof snd_buf);
+    for (i = 0; i < n / 128u; i++)
+        jn_bass_render(&e->bass, &e->patch, (float)i * 128.0f / 3803.0f, 0.0f, snd_buf + i * 128u, 128);
+    for (i = 4410; i < n; i++) {
+        float x = snd_buf[i], d = x - x1;   /* the first difference: weighs the top octave */
+        x1 = x;
+        sq += (double)x * (double)x, sum += (double)x, hsq += (double)d * (double)d;
+        if (fabsf(x) > pk) pk = fabsf(x);
+    }
+    *peak = pk;
+    *dc = (float)(sum / (double)(n - 4410u));
+    *hf = (float)(hsq / (sq + 1e-12));
+    return 10.0f * log10f((float)(sq / (double)(n - 4410u)) + 1e-12f);
+}
+TEST(test_ab_sounds)
+{
+    uint32_t k, bad_trim = 0, bad = 0;
+    char line[512] = "";
+    ab_init(&L, 0);
+    for (k = 0; k < L.fm.nnodes; k++) {
+        float pk, dc, hf, pk4, dc4, hf4;
+        float raw = snd_rms(&L, k, 38.0f, &pk, &dc, &hf);
+        float trimmed = raw + L.fm.node[k].trim_db;
+        snd_rms(&L, k, 62.0f, &pk4, &dc4, &hf4);
+        snprintf(line + strlen(line), sizeof line - strlen(line), " %s %.1f/%.1f", L.fm.node[k].name, (double)raw, (double)trimmed);
+        if (fabsf(trimmed + 13.0f) > 1.5f) bad_trim++;
+        if (!(pk < 1.0f) || fabsf(dc) > 0.01f || !(raw > -60.0f) || hf4 > 2.0f) {
+            bad++;
+            printf("  sound %s: peak %.2f dc %.4f hf(D4) %.2f\n", L.fm.node[k].name, (double)pk, (double)dc, (double)hf4);
+        }
+    }
+    printf("  sound RMS raw/trimmed (dBFS):%s\n", line);
+    CHECKF(bad_trim == 0, "%u sounds' trims off -13 dBFS by more than 1.5 dB", bad_trim);
+    CHECKF(bad == 0, "%u sounds out of bounds", bad);
+    CHECK(L.fm.nnodes == 16 && ab_node_find(&L, "REESE") >= 0 && ab_node_find(&L, "WOMP") >= 0);
+}
+
+/* (0.7) the mid-bass width is mono-safe: with WIDTH up, L + R is the same as with WIDTH down, and there is side */
+static jf_neuro_t wn[2];
+static float w_sub[128], w_bass[128], w_l[2][128], w_r[2][128];
+TEST(test_ab_bass_width)
+{
+    uint32_t b, i, k;
+    double diff = 0.0, side = 0.0, mid = 0.0;
+    jn_bass_t v;
+    jn_patch_t pt;
+    jg_eval_t ev;
+    ab_init(&L, 0);
+    jg_eval_node(&L.fm, (uint32_t)ab_node_find(&L, "REESE"), &ev);
+    for (i = 0; i < JN_NPARAMS; i++) pt.p[i] = ev.phys[i];
+    pt.motion = 0.5f, pt.coupling = 0.6f, pt.lfo_shape = 0.0f;
+    jn_bass_init(&v);
+    jn_bass_note(&v, 38.0f, 1.0f, 0, &pt);
+    for (k = 0; k < 2u; k++) { jf_neuro_init(&wn[k]); wn[k].m.width = k ? 1.0f : 0.0f; jf_neuro_update(&wn[k]); }
+    for (b = 0; b < 200u; b++) {
+        memset(w_bass, 0, sizeof w_bass); memset(w_sub, 0, sizeof w_sub);
+        jn_bass_render(&v, &pt, (float)b * 128.0f / 3803.0f, 0.0f, w_bass, 128);
+        for (k = 0; k < 2u; k++) {
+            memset(w_l[k], 0, sizeof w_l[k]); memset(w_r[k], 0, sizeof w_r[k]);
+            jf_neuro_process(&wn[k], w_sub, w_bass, w_l[k], w_r[k], 0, 128);
+        }
+        for (i = 0; i < 128u; i++) {
+            double m0 = (double)w_l[0][i] + (double)w_r[0][i], m1 = (double)w_l[1][i] + (double)w_r[1][i];
+            double s1 = (double)w_l[1][i] - (double)w_r[1][i];
+            if (b > 20u) diff += (m0 - m1) * (m0 - m1), mid += m0 * m0, side += s1 * s1;
+        }
+    }
+    CHECKF(diff < 1e-3 * mid, "mono sum changed by the width: %g of %g", diff, mid);
+    CHECKF(side > 1e-3 * mid, "the width makes side: %g of %g", side, mid);
+}
+
 void run_ab_live(void)
 {
+    RUN(test_ab_sounds);
+    RUN(test_ab_bass_width);
     RUN(test_ab_energy);
     RUN(test_ab_energy_curve);
     RUN(test_ab_answer_me);

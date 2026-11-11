@@ -109,6 +109,13 @@ typedef struct {
     jf_comp_t comp;
     jf_guard_t guard;
     float peak;
+    /* (0.7) the mid-bass width: the bass above ~250 Hz through two short modulated delays into the side only
+     * (mono-safe: L + R keeps the bass as it was; the sub and the bass below stay centred) */
+#define JF_BW_LEN 512u
+    jo_onepole_t bw_hp;
+    float bw_buf[JF_BW_LEN];
+    uint32_t bw_w;
+    float bw_ph;
 } jf_neuro_t;
 void jf_neuro_init(jf_neuro_t *b);
 void jf_neuro_update(jf_neuro_t *b);

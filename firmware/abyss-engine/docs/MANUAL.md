@@ -1,7 +1,7 @@
 # The ABYSS ENGINE manual
 
-ABYSS ENGINE is a bass sequencer: a neuro bass (FM CREATURE, REESE MATRIX) through a curated graph of sweetspot
-sounds, a separate clean sub, stabs and an evolving pad, on three tracks of steps in a shared key. The live tools
+ABYSS ENGINE is a bass sequencer: a bass with five models (FM NEURO, REESE, WOMP, HORN, SINE) and sixteen curated
+sounds, the drum & bass archetypes from the Reese to the foghorn, a separate clean sub, stabs and an evolving pad, on three tracks of steps in a shared key. The live tools
 (performance FX, fills, variations, scenes) sit on buttons you hold. Status: it runs in the simulators and the browser
 emulator; **it has not been tested on an FM-1 yet**.
 
@@ -17,9 +17,12 @@ layer.
 
 1. **PLAY.** Pattern 1 plays: a bass line in D minor at 174 BPM.
 2. **Tap a white key:** a step on or off. **Hold it and turn K1:** its note.
-3. **ALGO:** the library: a new bass line (ROLLING, OFFBEAT, NEURO STABS, HALF-TIME, REESE LONG, TWO-STEP, ACID,
-   WOBBLE 8THS), in the key. On STAB and PAD, chord rhythms. SEL + LFO undoes it.
-4. **K1 CHAR** moves the bass through its sounds (HOLLOW to BROKEN). K2 MOTION, K3 BITE, K4 GLIDE.
+3. **ALGO:** a bass STYLE: a sound, a line and how it is answered, the way the genre plays it (ROLLING REESE,
+   DARK TECHSTEP, HOOVER, NEURO SWITCH, TALKER, JUMP-UP WOMP, WOBBLE, FOGHORN, LIQUID ROLLER, 808 HALF-TIME,
+   JUNGLE DUB, LASER ZAPS, RUFIGE STAB), in the key; the screen says how it is played. On STAB and PAD, chord
+   rhythms. SEL + LFO undoes it.
+4. **K1 CHAR** moves the bass along its main sounds, DUB → ROLLER → REESE → REESE DARK → HOOVER → GROWL → TALK →
+   SNARL. K2 MOTION, K3 BITE, K4 GLIDE. Every sound by name: SOUND page, ALGO.
 5. **Hold FX and a white key:** a performance FX while you hold (OCT UP, FILTER DIVE, TAPE STOP …).
 6. **Tap ENV:** a fill in the last bar of the phrase. **Hold ENV + white 1–4:** a fill from the next bar.
 7. **Hold LFO + white 9 to 14:** a FORM: the bass answers itself, A B A C.
@@ -136,7 +139,7 @@ Hold REC to erase steps or a track.
 
 Every step has an ENERGY level, 1 to 4. ENERGY decides which play: at 0–25 % only level 1, at 75–100 % all four.
 Level 1 is the skeleton (the downbeat, the bar's middle), 2 the other notes, 3 the soft ones, 4 the offbeat 16ths
-and ratchets. The library's lines and the patterns come with levels; **K3 AUTO LEVELS** sets them again for the
+and ratchets. The styles' lines and the patterns come with levels; **K3 AUTO LEVELS** sets them again for the
 selected track from the notes' roles, and a **white key** steps that step's level 1 → 2 → 3 → 4. Lower ENERGY also
 takes some BITE out of the bass and darkens the pad; at 100 % it sounds as before.
 
@@ -172,6 +175,61 @@ With DECAY on, every note REC records fades a little each bar and goes after som
 sooner): a pattern you keep alive by playing. **Hold a step half a second** (no knob turned) to burn it in: it
 stays, marked with a solid corner; a fading step has a thin one.
 
+## The sounds and the STYLES (0.7)
+
+![HOME after ALGO: the style ROLLING REESE loaded, how it is played over the page](img/style.png "A style")
+
+The bass has five models: **FM NEURO** (two-operator FM: growls, talk, lasers), **REESE** (four detuned saws
+drifting against each other; blended into PWM pulses for the hoover), **WOMP** (saw / square whose filter and vowel
+open and close on every note, under the synced LFO), **HORN** (detuned squares and an octave, swelling open) and
+**SINE** (a driven sine with a pitch drop: the 808, the dub). Every model has a phaser (nasal when static, swept by
+the LFO) and a pitch envelope. The sub stays a clean mono sine underneath; above ~250 Hz the bass gets width (FX
+WIDTH) in the side only, so it stays mono-safe.
+
+| Sound | Model | What it is |
+|---|---|---|
+| DUB | SINE | the 90s jungle dub mid: deep, round, a little drive |
+| ROLLER | REESE | a warm, narrow Reese for liquid rollers |
+| REESE | REESE | the classic: detuned saws beating slowly, low-passed |
+| REESE DARK | REESE | wide detune, dark, driven, phased |
+| HOOVER | REESE | PWM pulses, a bend into the note, ~1700 Hz |
+| GROWL | FM | the neuro growl, LFO on the filter and the vowel |
+| TALK | FM | formants that speak |
+| SNARL | FM | hard, bright, folded |
+| WOMP | WOMP | the jump-up womp |
+| WUB | WOMP | the wobble: held notes, a 1/8 LFO |
+| FOGHORN | HORN | the jump-up horn |
+| 808 | SINE | a sine with a pitch drop (the sub drops with it) |
+| LASER | FM | a zap: a fast pitch fall |
+| METALLIC | FM | bell-like neuro |
+| TECH STAB | REESE | a short techstep saw stab |
+| BROKEN | FM | everything at once |
+
+MORPH (K1 CHAR on HOME) runs DUB → SNARL along the first eight; ALGO on the SOUND page reaches all sixteen.
+
+**STYLES.** ALGO on HOME with the BASS track loads a style into the pattern: its sound, its line (16 or 32 steps,
+accents, slides, octave jumps, ENERGY levels), the FORM that answers it and the answers' sounds. A box says how the
+style is played. Undo with SEL + LFO.
+
+| Style | Sound | How it is played | FORM, answers |
+|---|---|---|---|
+| ROLLING REESE | REESE | long notes, slow slides to the b7, b6, b3 | A B A C: REESE DARK, HOOVER |
+| DARK TECHSTEP | REESE DARK | half-bar notes, a drop to the b6, gaps | A A A B: HOOVER |
+| HOOVER | HOOVER | long bending notes, a fall at the end | — |
+| NEURO SWITCH | GROWL | 1/16 stabs and gaps, an octave jump | A B C D: TALK, SNARL, METALLIC (a new sound each bar) |
+| TALKER | TALK | slides on the offbeats | A B A C: GROWL, WOMP |
+| JUMP-UP WOMP | WOMP | the offbeat bounce, octave jumps | A A A B: WUB |
+| WOBBLE | WUB | held notes, the LFO plays the rhythm | A B A B: WOMP |
+| FOGHORN | FOGHORN | one big note, then space | A A A B: WOMP |
+| LIQUID ROLLER | ROLLER | legato 8ths through the chord tones | — |
+| 808 HALF-TIME | 808 | half-time hits that drop, a glide up | — |
+| JUNGLE DUB | DUB | roots and octaves, room for the break | — |
+| LASER ZAPS | LASER | short zaps around the snare | A B A C: METALLIC, SNARL |
+| RUFIGE STAB | TECH STAB | short saw stabs on the 2-step | A A A B: REESE DARK |
+
+How the archetypes are made and played, with sources: docs/research/dnb-bass-styles.md. All sixteen sounds are
+hypotheses until checked by ear (docs/development/sweetspots.md).
+
 ## The pages
 
 ### SEQUENCE (SEQ)
@@ -183,10 +241,11 @@ K4 SPACE (the delay / reverb send of stabs and pad).
 
 ### SOUND (EDIT)
 
-![SOUND on BASS: the patch as the graph sets it now](img/sound.png "SOUND")
+![SOUND on BASS: the sound browser on REESE DARK, the patch as it is now](img/sound_browser.png "SOUND")
 
-The keys play the track here without recording. ALGO: the chord type (BASS, PAD) or the stab model (STAB). PRESET:
-the root; SEL + PRESET: the scale.
+The keys play the track here without recording. ALGO: on BASS **every sound by name** (A's sound; undoable), on PAD
+the chord type, on STAB the stab model. PRESET: the root; SEL + PRESET: the scale. The line under the name shows
+the model and the key.
 
 | Track | K1 | K2 | K3 | K4 |
 |---|---|---|---|---|

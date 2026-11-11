@@ -167,6 +167,13 @@ static void scen_f(uint32_t b)
 {
     if (b == 0) { ab_cmd_bpm(&AB, 174.0f); ab_set_cr(&AB, 1); ab_cmd_play(&AB, 1); }
 }
+/* (0.7) G: every bass STYLE in turn, two bars each, at 174 BPM (the order of ab_line_name) */
+static void scen_g(uint32_t b)
+{
+    uint32_t two = AT(2.0f * 4.0f * 60.0f / 174.0f), g = two ? b / two : 0u;
+    if (b == 0) { ab_cmd_bpm(&AB, 174.0f); ab_cmd_play(&AB, 1); }
+    if (two && b % two == 0 && g < AB_NLINES) ab_load_line(&AB, (int)g);
+}
 /* pathological settings: every macro at its extremes, resonance and feedback up */
 static void scen_abuse(uint32_t b)
 {
@@ -189,6 +196,7 @@ static const scen_t SC[] = {
     {"E_morph_fm_nodes", 1, 16.0f, scen_e, 0.95f},
     {"abuse_extremes", 1, 8.0f, scen_abuse, 0.95f},
     {"F_call_response", 1, 11.3f, scen_f, 0.95f},
+    {"G_bass_styles", 1, 35.9f, scen_g, 0.95f},
 };
 
 int main(int argc, char **argv)

@@ -1,12 +1,22 @@
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 JUNGLE OS contributors */
-/* Abyss Engine's voices: the neuro bass (FM CREATURE, REESE MATRIX), the clean sub, the stab engine and the pad.
+/* Abyss Engine's voices: the bass (0.7: five models, FM NEURO, REESE, WOMP, HORN, SINE), the clean sub, the stab
+ * engine and the pad.
  * Parameters are physical (Hz, seconds, ratios); the sweetspot graph and the macros produce them. */
 #pragma once
 #include "../dsp/jo_dsp.h"
 
 /* ---------------------------------------------------------- neuro bass --- */
-enum { JN_FM_CREATURE, JN_REESE, JN_NMODELS };
+/* (0.7) the bass models:
+ *   FM      two-operator FM with feedback (growls, talking basses, lasers, metallic neuro)
+ *   REESE   four detuned saws drifting against each other (the phase movement), blended into PWM pulses for the
+ *           hoover; RATIO = the detune (4..40 cents), INDEX = the PWM / hoover blend, FDBK = the drift
+ *   WOMP    saw / square with a per-note "wom" (the filter and the vowel open and close on every note) under the
+ *           synced LFO: jump-up womps and wubs; INDEX = the square, FDBK = the wom's vowel depth
+ *   HORN    detuned squares and an octave above, swelling open (the foghorn); INDEX = the octave, FDBK = the swell
+ *   SINE    a driven sine (808, dub, rollers' clean mid) with a little FM grit (INDEX) */
+enum { JN_FM_CREATURE, JN_REESE, JN_WOMP, JN_HORN, JN_SINE, JN_NMODELS };
+extern const char *const jn_model_name[JN_NMODELS];
 /* the bass parameter vector, as the sweetspot graph orders it (bass_params in jo_synth.c) */
 enum {
     JN_P_MODEL,     /* discrete: JN_* */
@@ -24,6 +34,9 @@ enum {
     JN_P_LFODEPTH,  /* 0..1 */
     JN_P_FOLD,      /* wavefold 0..1 */
     JN_P_GLIDE,     /* s 0.001..0.15 (log) */
+    JN_P_PHASER,    /* (0.7) a 4-stage phaser swept by the LFO (static and nasal without LFO depth), 0..1 */
+    JN_P_PITCH,     /* (0.7) the pitch envelope: the note starts PITCH semitones off (-12..+24) and falls / rises
+                       to it over MODDEC / 2 (lasers, 808 drops, the hoover's bend) */
     JN_NPARAMS
 };
 
@@ -37,7 +50,9 @@ typedef struct {
 typedef struct {
     float freq, target, glide_k;
     float ph_c, ph_m, fb_y1, fb_y2;
-    float ph_r[3];
+    float ph_r[4], drift_ph[4];
+    float pe, pe_mul;        /* the pitch envelope (semitones), its decay */
+    float ap[4], ap_fb;      /* the phaser's allpass states, its feedback */
     jo_adsr_t amp;
     float modenv, modenv_mul;
     jo_svf_t f1, f2, lp;
@@ -61,11 +76,14 @@ void jn_bass_render(jn_bass_t *v, const jn_patch_t *p, float steps_now, float st
 typedef struct {
     float freq, target, glide_k, ph;
     float env, att_k, rel_k, sat, tri;
+    float pe, pe_mul;        /* (0.7) a pitch envelope in semitones (the 808 drop; 0: none) */
     uint8_t gate;
     int8_t octave;           /* relative to the bass note: -1 (default), 0; then folded into 36..72 Hz */
 } jn_sub_t;
 void jn_sub_init(jn_sub_t *s);
 void jn_sub_note(jn_sub_t *s, float note, float glide_s, int legato);
+/* (0.7) the sub's pitch envelope for the note just started: semitones and decay (s); 0: none */
+void jn_sub_pitch_env(jn_sub_t *s, float semis, float decay_s);
 void jn_sub_off(jn_sub_t *s);
 void jn_sub_render(jn_sub_t *s, float *out, uint32_t n);
 

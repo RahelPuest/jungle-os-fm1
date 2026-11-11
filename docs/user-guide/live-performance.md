@@ -32,7 +32,7 @@ signal is mono-compatible by design (the drum bus is mono), B's sub and bass are
 | 12:30 | scene IMPACT (half-time, INDUSTRIAL kit) | scene IMPACT (stabs, aggressive bass) | |
 | 14:00 | FILL 4 bars (black 10), then scene MUTATION | scene MUTATION (BITE high) | |
 | 16:00 | KIT knob toward METAL TECHSTEP; PRESSURE up | EXPLORE (ALGO) to REESE DARK | |
-| 18:00 | REC (RETURN) on a bar: the clean groove | REC (RETURN): SNAP; MORPH to HOLLOW, BITE down | |
+| 18:00 | REC (RETURN) on a bar: the clean groove | REC (RETURN): SNAP; MORPH to DUB, BITE down | |
 | 19:00 | mute KICK and SNARE (white 10, 11), leave the break | PAD HOLD on (SEL + REC), bass muted (SEL + black 1) | |
 | 20:00 | STOP on a downbeat | the pad's tail rings out (SEL + REC: PAD HOLD off) | fade |
 

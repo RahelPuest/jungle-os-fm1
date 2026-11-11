@@ -1,8 +1,9 @@
 # Sweetspots: how a node becomes certified
 
 The graphs' nodes are design hypotheses, all `JG_UNREVIEWED` today:
-- Abyss FM: HOLLOW, RUBBER, TALK, GROWL, SNARL, METALLIC, LASER, BROKEN (the MORPH path), REESE, REESE DARK
-  (`firmware/abyss-engine/engine/ab_engine.c` `FMN[]`, physical units)
+- Abyss bass (0.7): DUB, ROLLER, REESE, REESE DARK, HOOVER, GROWL, TALK, SNARL (the MORPH path), WOMP, WUB, FOGHORN,
+  808, LASER, METALLIC, TECH STAB, BROKEN (`firmware/abyss-engine/engine/ab_engine.c` `FMN[]`, physical units; the
+  archetypes behind them: docs/research/dnb-bass-styles.md; trims measured by `test_ab_sounds`)
 - Break Surgeon rhythm: CLEAN, ROLLING, CHOPPED, GLITCHED; kit: DUSTY ROLLER, JUNGLE SNAP, TIGHT NEURO, METAL
   TECHSTEP, INDUSTRIAL (`bs_engine.c` `graphs_init`)
 

@@ -7,32 +7,40 @@ enum { C_PLAY, C_BPM, C_NOTE, C_STAB, C_PAD, C_PATTERN, C_SCENE, C_PANIC, C_MUTE
 
 /* ----------------------------------------------------------- the graph --- */
 static const jg_param_t FMP[JN_NPARAMS] = {
-    {"MODEL", 0.0f, 1.0f, JG_DISCRETE, 0.0f},   {"RATIO", 0.5f, 8.0f, JG_LOG, 0.08f},
+    {"MODEL", 0.0f, 4.0f, JG_DISCRETE, 0.0f},   {"RATIO", 0.5f, 8.0f, JG_LOG, 0.08f},
     {"INDEX", 0.0f, 12.0f, JG_LIN, 0.15f},      {"FDBK", 0.0f, 0.85f, JG_LIN, 0.15f},
     {"VOWEL", 0.0f, 1.0f, JG_LIN, 0.3f},        {"FORMNT", 0.0f, 1.0f, JG_LIN, 0.25f},
     {"CUTOFF", 80.0f, 12000.0f, JG_LOG, 0.15f}, {"RES", 0.0f, 0.9f, JG_LIN, 0.15f},
     {"DRIVE", 1.0f, 10.0f, JG_LOG, 0.15f},      {"MODENV", 0.0f, 1.0f, JG_LIN, 0.25f},
     {"MODDEC", 0.02f, 1.5f, JG_LOG, 0.2f},      {"LFODIV", 0.0f, 7.0f, JG_DISCRETE, 0.0f},
     {"LFODEP", 0.0f, 1.0f, JG_LIN, 0.25f},      {"FOLD", 0.0f, 1.0f, JG_LIN, 0.2f},
-    {"GLIDE", 0.001f, 0.15f, JG_LOG, 0.2f},
+    {"GLIDE", 0.001f, 0.15f, JG_LOG, 0.2f},     {"PHASER", 0.0f, 1.0f, JG_LIN, 0.2f},
+    {"PITCH", -12.0f, 24.0f, JG_LIN, 0.0f},
 };
-/* the curated nodes: initial hypotheses in physical units, UNREVIEWED until they pass the listening checklist
- * and the measured checks (docs/development/sweetspots.md). Order of the values: FMP above. The path nodes'
- * trims were set from the RMS of a held D2 toward -13 dBFS (tests/integration/test_engines.c prints it): a
- * proxy for loudness, to be corrected by ear */
+/* (0.7) the curated sounds: the drum & bass bass archetypes (docs/research/dnb-bass-styles.md), initial
+ * hypotheses in physical units, UNREVIEWED until they pass the listening checklist (docs/development/sweetspots.md).
+ * Order of the values: FMP above. Models: 0 FM, 1 REESE, 2 WOMP, 3 HORN, 4 SINE. The trims bring a held D2 to
+ * about -13 dBFS RMS (measured: tests/integration/test_ab_live.c test_ab_sounds prints them), a proxy for loudness
+ * to be corrected by ear. MORPH's path: DUB .. SNARL, clean to dirty; the rest by the sound browser and EXPLORE */
 typedef struct { const char *n; float v[JN_NPARAMS]; float trim; } node_def_t;
 static const node_def_t FMN[] = {
-    /*            MODEL RATIO INDEX FDBK VOWEL FORM  CUT     RES   DRIVE MENV  MDEC  DIV  DEP   FOLD  GLIDE */
-    {"HOLLOW",   {0, 1.0f, 1.5f, 0.1f, 0.2f, 0.5f, 900.0f, 0.3f, 1.5f, 0.2f, 0.15f, 4, 0.3f, 0.0f, 0.03f}, 2.6f},
-    {"RUBBER",   {0, 2.0f, 2.5f, 0.05f, 0.1f, 0.7f, 600.0f, 0.75f, 2.0f, 0.7f, 0.3f, 4, 0.5f, 0.0f, 0.06f}, -5.6f},
-    {"TALK",     {0, 1.0f, 3.5f, 0.2f, 0.5f, 0.9f, 2500.0f, 0.45f, 2.5f, 0.3f, 0.2f, 3, 0.6f, 0.1f, 0.04f}, 0.6f},
-    {"GROWL",    {0, 0.5f, 5.0f, 0.45f, 0.3f, 0.6f, 1800.0f, 0.5f, 4.0f, 0.4f, 0.25f, 4, 0.55f, 0.2f, 0.05f}, 0.0f},
-    {"SNARL",    {0, 1.5f, 7.0f, 0.6f, 0.75f, 0.5f, 4000.0f, 0.55f, 6.0f, 0.5f, 0.12f, 6, 0.45f, 0.35f, 0.02f}, -4.1f},
-    {"METALLIC", {0, 2.7f, 6.0f, 0.3f, 0.9f, 0.3f, 6000.0f, 0.6f, 3.0f, 0.6f, 0.08f, 5, 0.3f, 0.1f, 0.01f}, -2.9f},
-    {"LASER",    {0, 3.5f, 9.0f, 0.2f, 1.0f, 0.2f, 8000.0f, 0.7f, 2.5f, 0.9f, 0.05f, 7, 0.4f, 0.0f, 0.1f}, -3.6f},
-    {"BROKEN",   {0, 5.0f, 11.0f, 0.8f, 0.6f, 0.4f, 5000.0f, 0.4f, 8.0f, 0.3f, 0.1f, 6, 0.8f, 0.6f, 0.02f}, -4.6f},
-    {"REESE",    {1, 3.0f, 6.0f, 0.0f, 0.4f, 0.2f, 1200.0f, 0.3f, 2.0f, 0.1f, 0.4f, 1, 0.5f, 0.0f, 0.05f}, -1.0f},
-    {"REESE DARK", {1, 6.0f, 9.0f, 0.0f, 0.2f, 0.5f, 700.0f, 0.5f, 4.0f, 0.2f, 0.4f, 0, 0.7f, 0.1f, 0.05f}, -2.0f},
+    /*             MOD RATIO INDEX FDBK  VOWEL FORM  CUT      RES   DRIVE MENV  MDEC   DIV DEP   FOLD  GLIDE  PHAS  PITCH */
+    {"DUB",        {4, 1.0f, 2.0f, 0.0f, 0.2f, 0.0f, 1200.0f, 0.1f, 2.5f, 0.1f, 0.2f,  2, 0.1f, 0.0f, 0.04f, 0.0f, 0.0f}, -3.5f},
+    {"ROLLER",     {1, 1.2f, 0.0f, 0.3f, 0.3f, 0.0f, 650.0f,  0.25f, 2.0f, 0.3f, 0.25f, 4, 0.15f, 0.0f, 0.05f, 0.0f, 0.0f}, 0.2f},
+    {"REESE",      {1, 3.0f, 0.0f, 0.55f, 0.4f, 0.0f, 1100.0f, 0.3f, 3.0f, 0.2f, 0.4f, 2, 0.3f, 0.05f, 0.06f, 0.25f, 0.0f}, 2.1f},
+    {"REESE DARK", {1, 6.0f, 0.0f, 0.7f, 0.2f, 0.15f, 480.0f, 0.45f, 4.5f, 0.25f, 0.6f, 1, 0.35f, 0.15f, 0.08f, 0.35f, 0.0f}, 3.7f},
+    {"HOOVER",     {1, 4.0f, 12.0f, 0.5f, 0.5f, 0.0f, 1700.0f, 0.2f, 3.0f, 0.3f, 0.5f, 0, 0.15f, 0.0f, 0.1f, 0.45f, -5.0f}, 2.6f},
+    {"GROWL",      {0, 0.5f, 5.0f, 0.45f, 0.3f, 0.6f, 1800.0f, 0.5f, 4.0f, 0.4f, 0.25f, 4, 0.55f, 0.2f, 0.05f, 0.2f, 0.0f}, 0.3f},
+    {"TALK",       {0, 1.0f, 3.5f, 0.2f, 0.5f, 0.9f, 2500.0f, 0.45f, 2.5f, 0.3f, 0.2f, 3, 0.7f, 0.1f, 0.04f, 0.0f, 0.0f}, 0.5f},
+    {"SNARL",      {0, 1.5f, 7.0f, 0.6f, 0.75f, 0.5f, 4000.0f, 0.55f, 6.0f, 0.5f, 0.12f, 6, 0.45f, 0.35f, 0.02f, 0.3f, 0.0f}, -3.6f},
+    {"WOMP",       {2, 1.0f, 4.0f, 0.7f, 0.1f, 0.7f, 400.0f,  0.6f, 3.0f, 1.0f, 0.35f, 2, 0.2f, 0.0f, 0.06f, 0.4f, 0.0f}, 2.3f},
+    {"WUB",        {2, 1.0f, 9.0f, 0.5f, 0.2f, 0.6f, 500.0f,  0.55f, 3.5f, 0.6f, 0.5f, 4, 0.9f, 0.1f, 0.05f, 0.5f, 0.0f}, 3.9f},
+    {"FOGHORN",    {3, 2.0f, 6.0f, 0.8f, 0.3f, 0.3f, 1500.0f, 0.3f, 6.0f, 0.2f, 0.9f, 0, 0.1f, 0.1f, 0.08f, 0.2f, 0.0f}, -1.7f},
+    {"808",        {4, 1.0f, 4.0f, 0.0f, 0.0f, 0.0f, 2500.0f, 0.0f, 5.0f, 0.0f, 0.5f, 2, 0.0f, 0.0f, 0.1f, 0.0f, 12.0f}, -4.4f},
+    {"LASER",      {0, 3.5f, 9.0f, 0.2f, 1.0f, 0.2f, 8000.0f, 0.7f, 2.5f, 0.9f, 0.08f, 7, 0.4f, 0.0f, 0.1f, 0.0f, 24.0f}, -3.7f},
+    {"METALLIC",   {0, 2.7f, 6.0f, 0.3f, 0.9f, 0.3f, 6000.0f, 0.6f, 3.0f, 0.6f, 0.08f, 5, 0.3f, 0.1f, 0.01f, 0.4f, 0.0f}, -2.0f},
+    {"TECH STAB",  {1, 2.2f, 4.0f, 0.2f, 0.3f, 0.0f, 2200.0f, 0.35f, 5.0f, 0.8f, 0.12f, 0, 0.0f, 0.25f, 0.01f, 0.0f, 0.0f}, 5.2f},
+    {"BROKEN",     {0, 5.0f, 11.0f, 0.8f, 0.6f, 0.4f, 5000.0f, 0.4f, 8.0f, 0.3f, 0.1f, 6, 0.8f, 0.6f, 0.02f, 0.2f, 0.0f}, -4.5f},
 };
 #define NFMN (sizeof FMN / sizeof FMN[0])
 
@@ -41,7 +49,11 @@ static void graph_init(ab_engine_t *e)
     jg_graph_t *g = &e->fm;
     uint32_t i, k;
     static const uint8_t PATH[] = {0, 1, 2, 3, 4, 5, 6, 7};
-    static const jg_edge_t EXTRA[] = {{0, 8, JG_EDGE_XFADE}, {8, 9, 0}, {9, 3, JG_EDGE_XFADE}, {2, 4, 0}, {3, 7, 0}};
+    /* EXPLORE's neighbours: the jump-up family (WOMP WUB FOGHORN), the 808 by the DUB, the zaps by the FMs; an edge
+     * between two models crossfades */
+    static const jg_edge_t EXTRA[] = {{0, 11, 0},  {11, 8, JG_EDGE_XFADE}, {8, 9, 0}, {9, 6, JG_EDGE_XFADE},
+                                      {3, 10, JG_EDGE_XFADE}, {10, 8, JG_EDGE_XFADE}, {1, 14, 0}, {14, 3, 0},
+                                      {5, 13, 0}, {13, 12, 0}, {7, 15, 0}, {15, 12, 0}, {2, 9, JG_EDGE_XFADE}};
     g->param = FMP;
     g->nparams = JN_NPARAMS;
     g->nnodes = NFMN;
@@ -55,7 +67,7 @@ static void graph_init(ab_engine_t *e)
     for (i = 0; i + 1u < sizeof PATH; i++) {
         g->edge[g->nedges].a = PATH[i];
         g->edge[g->nedges].b = PATH[i + 1u];
-        g->edge[g->nedges++].flags = 0;
+        g->edge[g->nedges++].flags = FMN[PATH[i]].v[JN_P_MODEL] != FMN[PATH[i + 1u]].v[JN_P_MODEL] ? JG_EDGE_XFADE : 0;
     }
     for (i = 0; i < sizeof EXTRA / sizeof EXTRA[0]; i++) g->edge[g->nedges++] = EXTRA[i];
     g->npath = sizeof PATH;
@@ -63,6 +75,17 @@ static void graph_init(ab_engine_t *e)
 }
 
 const char *ab_node_name(const ab_engine_t *e) { return e->fm.node[e->fv.near].name; }
+
+int ab_node_find(const ab_engine_t *e, const char *name)
+{
+    uint32_t i, k;
+    for (i = 0; i < e->fm.nnodes; i++) {
+        const char *a = e->fm.node[i].name;
+        for (k = 0; a[k] && a[k] == name[k]; k++) {}
+        if (!a[k] && !name[k]) return (int)i;
+    }
+    return -1;
+}
 
 void ab_set_morph(ab_engine_t *e, float t)
 {
@@ -166,6 +189,9 @@ void ab_sound_get(const ab_engine_t *e, ab_sound_state_t *s)
     for (i = 0; i < JN_NPARAMS; i++) s->v[i] = e->mutate_v[i];
     s->explore = e->explore_node;
     s->mutated = e->mutated;
+    s->morph = e->morph;
+    s->form = e->form;
+    for (i = 0; i < AB_NVAR - 1u; i++) s->var_node[i] = e->cr[i].node;
 }
 void ab_sound_set(ab_engine_t *e, const ab_sound_state_t *s)
 {
@@ -173,6 +199,9 @@ void ab_sound_set(ab_engine_t *e, const ab_sound_state_t *s)
     for (i = 0; i < JN_NPARAMS; i++) e->mutate_v[i] = s->v[i];
     e->explore_node = s->explore;
     e->mutated = s->mutated;
+    e->morph = s->morph;
+    ab_set_form(e, s->form);
+    for (i = 0; i < AB_NVAR - 1u; i++) e->cr[i].node = s->var_node[i];
 }
 
 /* the bass track 16th abs plays: the pattern's (A, or a response on A's line), or a response's line */
@@ -249,7 +278,6 @@ void ab_default_patterns(ab_engine_t *e)
 #define R (-99)
     static const int8_t B0[16] = {0, R, R, 0, R, R, 3, R, 0, R, -2, 0, R, R, -5, R};
     static const char F0[17] = "A..S..A.A.SS..S.";
-    static const int16_t M0[16] = {-1, -1, -1, 150, -1, -1, 200, -1, -1, -1, 90, 120, -1, -1, 230, -1};
     static const int8_t B1[16] = {0, R, 0, R, 0, 12, R, 0, R, 0, R, 7, R, 5, 3, R};
     static const char F1[17] = "A.S.ASSA.S.SAS..";
     static const int8_t B2[16] = {0, R, R, R, R, R, R, R, -2, R, R, R, R, R, -5, R};
@@ -262,7 +290,7 @@ void ab_default_patterns(ab_engine_t *e)
         e->pat[p].swing = 52;
         for (i = 0; i < 16u; i++) e->pat[p].t[AB_T_STAB].s[i].data = 0, e->pat[p].t[AB_T_PAD].s[i].data = 0;
     }
-    bass_line(&e->pat[0].t[AB_T_BASS], B0, F0, M0);
+    bass_line(&e->pat[0].t[AB_T_BASS], B0, F0, 0); /* (0.7) no MORPH locks: the knob's sound throughout */
     bass_line(&e->pat[1].t[AB_T_BASS], B1, F1, 0);
     bass_line(&e->pat[2].t[AB_T_BASS], B2, F2, 0);
     /* pattern 3: no bass (the intro: a pad alone) */
@@ -346,6 +374,9 @@ static void bass_on(ab_engine_t *e, float note, float vel, int slide)
     int legato = slide && e->bass_on;
     jn_bass_note(&e->bass, note, vel, legato, &e->patch);
     jn_sub_note(&e->sub, note, e->patch.p[JN_P_GLIDE], legato);
+    /* (0.7) the SINE model's pitch drop (the 808) is the sub's too: the drop is in the fundamental */
+    if (!legato && (int)e->patch.p[JN_P_MODEL] == JN_SINE && e->patch.p[JN_P_PITCH] != 0.0f)
+        jn_sub_pitch_env(&e->sub, e->patch.p[JN_P_PITCH], e->patch.p[JN_P_MODDEC] * 0.5f);
     e->bass_on = 1;
     e->last_bass_note = note;
 }
@@ -628,7 +659,7 @@ void ab_init(ab_engine_t *e, int16_t *pool)
     e->stab_p.chord = 0.3f, e->stab_p.attack = 0.1f, e->stab_p.bite = 0.5f, e->stab_p.tail = 0.4f;
     e->pad_p.darkness = 0.5f, e->pad_p.evolve = 0.4f, e->pad_p.tension = 0.3f, e->pad_p.depth = 0.6f;
     e->pad_p.attack_s = 1.5f, e->pad_p.release_s = 3.0f;
-    e->morph = e->morph_s = 0.4f;
+    e->morph = e->morph_s = 2.0f / 7.0f; /* (0.7) REESE, MORPH's third node */
     e->motion = 0.5f, e->bite = 0.3f, e->space = 0.4f;
     e->morph_lock = -1;
     e->bite_lock = -1.0f;
@@ -646,13 +677,16 @@ void ab_init(ab_engine_t *e, int16_t *pool)
     e->kick_bar = 0xFFFFFFF0u;
     e->follow_link = 1;
     e->duck_depth = 0.6f;
-    e->cr[0].line = -1, e->cr[0].node = 8;  /* B: A's line as REESE */
-    e->cr[1].line = 1, e->cr[1].node = 6;   /* C: P2's line as LASER, the turnaround */
-    e->cr[2].line = 2, e->cr[2].node = 3;   /* D: P3's line as GROWL */
+    e->cr[0].line = -1;                     /* B: A's line as REESE DARK (A: REESE) */
+    e->cr[1].line = 1;                      /* C: P2's line as LASER, the turnaround */
+    e->cr[2].line = 2;                      /* D: P3's line as GROWL */
     e->var_at = 0xFFFFFFFFu;
     e->glide_amt = 0.5f;
     e->tape_gain = 1.0f;
     graph_init(e);
+    e->cr[0].node = (int8_t)ab_node_find(e, "REESE DARK");
+    e->cr[1].node = (int8_t)ab_node_find(e, "LASER");
+    e->cr[2].node = (int8_t)ab_node_find(e, "GROWL");
     patch_update(e);
     js_clock_init(&e->clock, 174.0f);
     ab_default_patterns(e);
@@ -1018,24 +1052,70 @@ void ab_render(ab_engine_t *e, int32_t *lr, uint32_t n, float out_gain)
 }
 
 /* -------------------------------------------------------------- library --- */
-/* (0.5) bass lines as scale degrees (R: rest; 7 = the octave above; negative: below the root), flags: 'A' accent,
- * 'S' slide (legato into the note), 'x' plain. The genre's common forms, written for this firmware */
+/* (0.7) the STYLES: per style its sound, its line and how it is answered. A line is 16 or 32 steps; per step a
+ * scale degree (R: rest; 7 = the octave above; negative: below the root) and a flag: 'A' accent, 'S' slide /
+ * legato from the step before (a held note is the same degree slid on), 'o' an octave up (a lock), 'u' an octave
+ * down, 'g' soft, 'x' plain. The genre's common ways of playing each archetype, written for this firmware (no
+ * record's riff): docs/research/dnb-bass-styles.md */
 #define R (-99)
-const char *const ab_line_name[AB_NLINES] = {"ROLLING", "OFFBEAT", "NEURO STABS", "HALF-TIME", "REESE LONG",
-                                             "TWO-STEP", "ACID", "WOBBLE 8THS"};
-static const int8_t LINE_DEG[AB_NLINES][16] = {
-    {0, R, R, 0, R, R, 0, R, 0, R, R, 0, R, R, 4, R},
-    {R, R, 0, R, R, R, 0, R, R, R, 0, R, R, R, 3, R},
-    {0, R, R, 0, R, R, R, R, R, R, 0, 0, R, R, R, R},
-    {0, 0, 0, 0, 0, 0, R, R, R, R, R, R, R, R, -2, -2},
-    {0, 0, 0, 0, 0, 0, 0, 0, -2, -2, -2, -2, -2, -2, -2, -2},
-    {0, R, R, R, R, R, R, R, R, R, 0, R, R, 2, R, R},
-    {0, 0, 7, 0, R, 0, 3, 0, 0, R, 7, 0, 4, 0, R, 3},
-    {0, R, 0, R, 0, R, 0, R, 3, R, 3, R, 3, R, 3, R},
-};
-static const char LINE_FL[AB_NLINES][17] = {
-    "A..x..x.A..x..S.", "..A...x...A...x.", "A..A......AA....", "ASSSSS........AS",
-    "ASSSSSSSASSSSSSS", "A.........A..x..", "A.SA.S.AS.A.S.A.", "A.x.x.x.A.x.x.x.",
+typedef struct {
+    const char *sound;
+    uint8_t len;
+    int8_t deg[32];
+    const char *fl;
+    uint8_t form;
+    const char *ans[AB_NVAR - 1];  /* B C D's sounds (their line: A's) */
+    float sub_sat;
+} style_t;
+const char *const ab_line_name[AB_NLINES] = {"ROLLING REESE", "DARK TECHSTEP", "HOOVER", "NEURO SWITCH", "TALKER",
+                                             "JUMP-UP WOMP", "WOBBLE", "FOGHORN", "LIQUID ROLLER", "808 HALF-TIME",
+                                             "JUNGLE DUB", "LASER ZAPS", "RUFIGE STAB"};
+const char *const ab_style_hint[AB_NLINES] = {
+    "LONG NOTES, SLOW SLIDES UNDER THE BREAK", "HALF-BAR NOTES, DARK DROPS, GAPS", "LONG BENDING NOTES, A FALL AT THE END",
+    "1/16 STABS AND GAPS, A NEW SOUND A BAR", "OFFBEAT SLIDES THAT SPEAK", "OFFBEAT BOUNCE, OCTAVE JUMPS",
+    "HELD NOTES, THE LFO PLAYS THE RHYTHM", "ONE BIG NOTE, THEN SPACE", "LEGATO 8THS THROUGH THE CHORD",
+    "HALF-TIME HITS THAT DROP", "ROOTS AND OCTAVES, ROOM FOR THE BREAK", "SHORT ZAPS AROUND THE SNARE",
+    "SHORT SAW STABS ON THE 2-STEP"};
+static const style_t STYLE[AB_NLINES] = {
+    /* ROLLING REESE: a long root under one and a half bars, slow slides down to the b7 and the b6 and back */
+    {"REESE", 32, {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, -2, -2},
+     "ASSSSSSSSSSSSSSSASSSSSSSSSSSSSSS", AB_FORM_ABAC, {"REESE DARK", "HOOVER", "ROLLER"}, 0.15f},
+    /* DARK TECHSTEP: half-bar notes, a drop to the b6, gaps */
+    {"REESE DARK", 16, {0, 0, 0, 0, 0, 0, R, R, R, R, -2, -2, -2, R, R, R}, "ASSSSS....ASS...", AB_FORM_AAAB,
+     {"HOOVER", "TECH STAB", "REESE"}, 0.2f},
+    /* HOOVER: long bending notes, the root, the 4th, the b3, falling at the end */
+    {"HOOVER", 32, {0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, R, R, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, -1, -1, -2, -2},
+     "ASSSSSSSASSSSS..ASSSSSSSSSSSSSSS", AB_FORM_OFF, {"REESE DARK", "LASER", "REESE"}, 0.15f},
+    /* NEURO SWITCH: 1/16 stabs with gaps; the FORM switches the sound every bar */
+    {"GROWL", 16, {0, R, R, 0, R, R, R, 0, R, R, 0, 0, R, R, R, 7}, "A..x...A..Ax...o", AB_FORM_ABCD,
+     {"TALK", "SNARL", "METALLIC"}, 0.25f},
+    /* TALKER: slides on the offbeats that make the formants speak */
+    {"TALK", 16, {R, R, 0, 0, R, R, 2, R, R, R, 0, 0, R, 4, 3, R}, "..AS..x...AS.xS.", AB_FORM_ABAC,
+     {"GROWL", "WOMP", "SNARL"}, 0.2f},
+    /* JUMP-UP WOMP: the offbeat bounce, an octave up on the and of 2 and 4 */
+    {"WOMP", 16, {R, R, 0, R, R, R, 0, R, R, R, 0, R, R, R, 0, 4}, "..A...o...A...ox", AB_FORM_AAAB,
+     {"WUB", "FOGHORN", "WOMP"}, 0.25f},
+    /* WOBBLE: held notes, the synced LFO plays the rhythm */
+    {"WUB", 16, {0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 3, 3, 3, 3}, "ASSSSSSSASSSASSS", AB_FORM_ABAB,
+     {"WOMP", "TALK", "WUB"}, 0.2f},
+    /* FOGHORN: one big note, then space; the second bar's note lower */
+    {"FOGHORN", 32, {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, R, R, R, R, R, R, R, R, R, R, R, R, R, R, -2, -2, -2, -2, -2, -2, -2, -2},
+     "ASSSSSSSSS..............ASSSSSSS", AB_FORM_AAAB, {"WOMP", "REESE DARK", "FOGHORN"}, 0.3f},
+    /* LIQUID ROLLER: legato 8ths through the chord tones of i and VI */
+    {"ROLLER", 32, {0, 0, 2, 2, 4, 4, 2, 2, 0, 0, -1, -1, 0, 0, 2, 2, -2, -2, 0, 0, 2, 2, 0, 0, -3, -3, -2, -2, 0, 0, 4, 4},
+     "ASSSSSSSxSSSSSSSASSSSSSSxSSSSSSS", AB_FORM_OFF, {"DUB", "REESE", "TALK"}, 0.1f},
+    /* 808 HALF-TIME: half-time hits that drop in pitch, a glide up into the second bar */
+    {"808", 32, {0, 0, 0, 0, 0, 0, R, R, R, R, R, 0, R, R, R, R, -2, -2, -2, -2, R, R, R, R, R, R, 0, 0, 7, 7, R, R},
+     "ASSSSS.....x....ASSS......AxoS..", AB_FORM_OFF, {"DUB", "REESE DARK", "808"}, 0.35f},
+    /* JUNGLE DUB: roots and octaves with room for the break */
+    {"DUB", 16, {0, 0, R, R, R, R, 7, R, 0, 0, R, R, R, 4, R, R}, "AS....o.xS...x..", AB_FORM_OFF,
+     {"808", "ROLLER", "DUB"}, 0.2f},
+    /* LASER ZAPS: short zaps on the 16ths around the snare */
+    {"LASER", 16, {R, R, R, 0, R, R, R, 7, R, R, R, 0, R, R, 0, 7}, "...A...o...A..xo", AB_FORM_ABAC,
+     {"METALLIC", "SNARL", "LASER"}, 0.25f},
+    /* RUFIGE STAB: short saw stabs on the 2-step */
+    {"TECH STAB", 16, {0, R, R, R, R, R, R, 0, R, R, 0, R, R, R, R, R}, "A......x..A.....", AB_FORM_AAAB,
+     {"REESE DARK", "GROWL", "TECH STAB"}, 0.2f},
 };
 const char *const ab_stab_rhythm_name[AB_NRHYTHMS] = {"OFFBEAT STABS", "2-STEP STABS", "RAVE", "DOTTED", "NONE"};
 const char *const ab_pad_rhythm_name[AB_NRHYTHMS] = {"WHOLE BARS", "I - VI", "FOUR CHORDS", "PULSE", "NONE"};
@@ -1050,22 +1130,44 @@ static int deg_rel(int root, int scale, int deg)
 
 void ab_load_line(ab_engine_t *e, int l)
 {
+    const style_t *st = &STYLE[(uint32_t)l % AB_NLINES];
     js_track_t t = e->pat[e->cur_pat].t[AB_T_BASS];
-    uint32_t i, k = (uint32_t)l % AB_NLINES;
+    uint32_t i;
+    int node;
     for (i = 0; i < JS_MAXSTEPS; i++) js_step_clear(&t.s[i]), t.s[i].data = 64;
-    t.len = 16;
+    t.len = st->len;
     t.div = 0;
-    for (i = 0; i < 16u; i++) {
-        js_step_t *st = &t.s[i];
-        if (LINE_DEG[k][i] == R) continue;
-        st->flags = JS_ON;
-        st->data = (uint8_t)(64 + deg_rel(e->root, e->scale, LINE_DEG[k][i]));
-        st->vel = 100;
-        if (LINE_FL[k][i] == 'S') st->flags |= JS_SLIDE;
-        if (LINE_FL[k][i] == 'A') st->flags |= JS_ACCENT, st->vel = 124;
+    for (i = 0; i < st->len; i++) {
+        js_step_t *s = &t.s[i];
+        char f = st->fl[i];
+        if (st->deg[i] == R) continue;
+        s->flags = JS_ON;
+        s->data = (uint8_t)(64 + deg_rel(e->root, e->scale, st->deg[i]));
+        s->vel = f == 'g' ? 60 : 100;
+        if (f == 'S') s->flags |= JS_SLIDE;
+        if (f == 'A') s->flags |= JS_ACCENT, s->vel = 124;
+        if (f == 'o') js_step_set_lock(s, AB_LK_OCT, 3);
+        if (f == 'u') js_step_set_lock(s, AB_LK_OCT, 1);
     }
     e->pat[e->cur_pat].t[AB_T_BASS] = t;
     ab_auto_levels(e, AB_T_BASS);
+    /* the sound: on MORPH's path, MORPH goes there; off it, EXPLORE holds it */
+    node = ab_node_find(e, st->sound);
+    e->mutated = 0;
+    e->explore_node = -1;
+    if (node >= 0) {
+        for (i = 0; i < e->fm.npath; i++)
+            if (e->fm.path[i] == (uint8_t)node) break;
+        if (i < e->fm.npath) e->morph = jg_path_t(&e->fm, i);
+        else e->explore_node = (int8_t)node;
+    }
+    /* the answers: A's line in their own sounds, and the FORM that plays them */
+    for (i = 0; i < AB_NVAR - 1u; i++) {
+        e->cr[i].line = -1;
+        e->cr[i].node = (int8_t)ab_node_find(e, st->ans[i]);
+    }
+    ab_set_form(e, st->form);
+    e->sub.sat = st->sub_sat;
 }
 
 void ab_load_rhythm(ab_engine_t *e, int track, int r)

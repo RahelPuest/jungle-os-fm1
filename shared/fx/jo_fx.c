@@ -342,18 +342,35 @@ void jf_neuro_process(jf_neuro_t *b, const float *sub, const float *bass, float 
     uint32_t i;
     const float k_xo = 0.0164f;  /* ~115 Hz one-pole: the bass path's low cut */
     const float k_side = 0.0201f; /* ~140 Hz: no width below */
+    const float k_bw = 0.0350f;   /* ~250 Hz: the mid-bass width's band */
     float pk = b->peak;
+    /* the width's two delay taps (samples), moved once a block by a slow LFO: 3..6 ms and 5.5..8.5 ms */
+    float bw_amt = 2.0f * b->width;
+    float tl = (4.5f + 1.5f * jo_sin_turns(b->bw_ph)) * 0.001f * JO_SR;
+    float tr = (7.0f + 1.5f * jo_sin_turns(b->bw_ph + 0.37f)) * 0.001f * JO_SR;
+    b->bw_ph = jo_wrap1(b->bw_ph + 0.23f * (float)n * JO_INV_SR);
     for (i = 0; i < n; i++) {
         float d = duck ? duck[i] : 1.0f;
         float s = sub[i] * b->sub_gain * d;
         float bs = jo_hp1(&b->xo_lo, bass[i], k_xo);
-        float mid, side, hl, hr, g, outl, outr;
+        float mid, side, hl, hr, g, outl, outr, bw_side;
         bs = jo_tanh(bs * b->dirt_drive * 0.5f) * b->dirt_comp * 2.0f * d;
+        {   /* the mid-bass width (0.7) */
+            float hi = jo_hp1(&b->bw_hp, bs, k_bw), rl, rr, fl, fr;
+            uint32_t il, ir;
+            b->bw_buf[b->bw_w] = hi;
+            fl = (float)b->bw_w + (float)JF_BW_LEN - tl, fr = (float)b->bw_w + (float)JF_BW_LEN - tr;
+            il = (uint32_t)fl, ir = (uint32_t)fr;
+            rl = jo_lerpf(b->bw_buf[il % JF_BW_LEN], b->bw_buf[(il + 1u) % JF_BW_LEN], fl - (float)il);
+            rr = jo_lerpf(b->bw_buf[ir % JF_BW_LEN], b->bw_buf[(ir + 1u) % JF_BW_LEN], fr - (float)ir);
+            b->bw_w = (b->bw_w + 1u) % JF_BW_LEN;
+            bw_side = 0.5f * (rl - rr) * bw_amt;
+        }
         /* width: the side signal's highs only (pads, stabs, returns); sub and bass stay centred (mono-safe) */
         hl = jo_hp1(&b->side_hp_l, l[i], k_side);
         hr = jo_hp1(&b->side_hp_r, r[i], k_side);
         mid = 0.5f * (l[i] + r[i]);
-        side = 0.5f * (hl - hr) * (0.5f + 1.5f * b->width);
+        side = 0.5f * (hl - hr) * (0.5f + 1.5f * b->width) + bw_side;
         outl = s + bs + mid + side;
         outr = s + bs + mid - side;
         g = jf_comp_gain(&b->comp, 0.5f * (outl + outr));
