@@ -372,3 +372,127 @@ turn ALGO -10
 key w5 up
 tap PLAY
 wait 200
+# (0.6) ENERGY (hold HOME), ROUTES (hold SEQ), DNA (SEQ's second tap), TAPE DECAY (SONG's K4)
+tap HOME
+tap REC
+tap PLAY
+wait 400
+press HOME
+wait 150
+tapkey w0
+tapkey w1
+tapkey w2
+tapkey w2
+turn K1 -40
+wait 400
+shot bs_energy_layer.png
+turn K2 1
+wait 150
+turn K2 1
+wait 150
+turn K2 -2
+wait 150
+turn K3 1
+tapkey b1
+wait 150
+turn SELECT 40
+release HOME
+wait 300
+press SEQ
+wait 150
+tapkey b0
+wait 120
+tapkey b1
+wait 120
+tapkey b2
+wait 120
+tapkey b3
+wait 120
+tapkey b4
+wait 120
+tapkey b5
+wait 120
+tapkey b6
+wait 120
+tapkey b7
+wait 120
+tapkey b8
+wait 120
+tapkey w0
+tapkey w4
+tapkey w8
+tapkey w12
+wait 300
+shot bs_route_layer.png
+turn K1 1
+wait 120
+turn K1 1
+wait 120
+turn K1 -2
+turn K2 1
+tapkey b6
+wait 200
+release SEQ
+wait 700
+shot bs_route_main.png
+press SEQ
+tapkey b0
+turn K2 -1
+release SEQ
+wait 200
+tap SEQ
+wait 150
+tap SEQ
+wait 300
+tap LFO
+wait 200
+tap LFO
+wait 200
+tap LFO
+wait 300
+tapkey b0
+tapkey w1
+wait 200
+tapkey b2
+tapkey w0
+tapkey w2
+wait 400
+shot bs_dna.png
+tapkey b1
+wait 150
+turn K1 5
+press SAVE
+tapkey w10
+release SAVE
+wait 200
+tapkey b3
+wait 200
+tap ARP
+turn K4 10
+wait 300
+shot bs_song_decay.png
+tap HOME
+tap REC
+wait 150
+tapkey w3
+wait 250
+tapkey w7
+wait 250
+tapkey w11
+wait 250
+tap REC
+key w0 down
+wait 700
+key w0 up
+wait 3000
+shot bs_decay.png
+tap ARP
+turn K4 -20
+tap GLO
+turn ALGO 1
+wait 150
+turn ALGO -1
+wait 150
+tap HOME
+tap PLAY
+wait 200

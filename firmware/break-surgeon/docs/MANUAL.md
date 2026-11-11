@@ -49,8 +49,8 @@ Below, *white 1..16* are the white keys left to right (F3 … G5), *black 1..11*
 
 | Button | Tap | Hold: a layer while held |
 |---|---|---|
-| HOME | the main page | — |
-| SEQ | the overview: all tracks with names, lengths, swing | — |
+| HOME | the main page | **ENERGY**: SELECT or K1 the ENERGY; white keys set the steps' levels 1–4; K2 the CURVE, K3 AUTO LEVELS (below) |
+| SEQ | the overview; a second tap: the DNA page | **ROUTE**: black 1–9 a route for the playhead; white keys pressed in order draw one; K1 TARGET, K2 LATCH (below) |
 | EDIT | SOUND: the track's sound; the keys audition it | — |
 | FX | the FX page (DRUM PRESSURE) | **FX**: white 1–8 the performance FX while held; K1–K4 PUNCH GRIT GLUE PRESSURE |
 | ARP | SONG: scenes, FORM, phrase, quantize | **SONG**: white 1–8 queue a scene, white 9–12 a pattern, black 1–7 mute / unmute |
@@ -58,7 +58,7 @@ Below, *white 1..16* are the white keys left to right (F3 … G5), *black 1..11*
 | ENV | a ROLL fill in the phrase's last bar (or its last 2) | **FILL**: white 1–4 ROLL, SNARE BUILD, DROP OUT, CHOP from the next bar; K1 the length (1 or 2 bars) |
 | LFO | MUTATE the selected track | **VARY**: white 1–4 variation A–D, white 9–14 the FORM; K1 DENSITY, K2 HUMANIZE, K3 MUTATE amount, K4 GHOSTS |
 | REC | RECORD on / off | **ERASE**: white = clear that step, black = clear that track |
-| SAVE | save everything (refused while playing; it also saves by itself 3 s after STOP) | **STORE**: white 1–8 store the current state as scene 1–8 |
+| SAVE | save everything (refused while playing; it also saves by itself 3 s after STOP) | **STORE**: white 1–8 store the current state as scene 1–8 (on the DNA page also white 9–12: the playing genome into P1–P4) |
 | SEL | — | **SEL**: + LFO UNDO, + ENV REDO, + PLAY PANIC, + REC RETURN, + SELECT tempo, + a knob fine steps |
 | PLAY | start / stop | |
 | OCT− / OCT+ | steps 1–16 / 17–32 | |
@@ -193,8 +193,7 @@ The eight scenes (the current one lit), the FORM with the bar playing lit, the p
 - **K2 PHRASE:** 4, 8 or 16 bars: what the header counts, where ENV's tap puts its fill, PHRASE quantize and the
   trig conditions PHRASE 1ST / END.
 - **K3 FORM:** as LFO + white 9–14.
-- **K4 BRK LOCK:** OFF; LAYER (the synth kick and snare also play where the break plays a kick or snare slice);
-  SEPARATE (they skip those steps, so nothing doubles).
+- **K4 DECAY:** TAPE DECAY off, or how fast recorded steps fade (5–100 %; below).
 - **ALGO: ANCHORS** (mutation and the rhythm graph keep the beats). **PRESET: LINK KICK** (send kick and snare
   triggers to Abyss Engine).
 
@@ -203,6 +202,66 @@ black 1–7 mute / unmute a track. A scene holds the pattern, the mutes, the RHY
 the DRUM PRESSURE settings. **Hold SAVE** + white 1–8 stores the current state as a scene.
 
 ![ARP held: the SONG layer](img/song_layer.png "ARP held")
+
+## ENERGY (hold HOME)
+
+![HOME held: the ENERGY layer, the kick's steps with their levels, ENERGY at 20 % (level 1)](img/energy_layer.png "ENERGY")
+
+One control for the intensity of the whole kit. Every step has a **level** 1–4; ENERGY decides which levels play:
+0–24 % level 1 only, 25–49 % up to 2, 50–74 % up to 3, 75–100 % everything (the default, the sound of 0.5).
+
+- **SELECT or K1:** ENERGY. The header shows its level (E1 … E4). Below full it also thins the room and the grit.
+- **White keys:** the selected track's step levels, 1 → 2 → 3 → 4 → 1 (the boxes show the number; dim: silent now).
+  Black keys: the track.
+- **K2 CURVE:** REC arms it: from the next phrase's start it records one phrase of the ENERGY knob, beat by beat,
+  then plays it every phrase (PLAY). OFF stops it; turning ENERGY by hand also takes over.
+- **K3 AUTO LEVELS:** the selected track's levels from its role: the beats 1 (hats, perc, impact 2), other 8ths 2,
+  ghosts and soft hits 3, ratchets 4, odd 16ths 3 (break, kick, snare) or 4. The factory patterns and the grooves
+  come with these levels. Hits the rhythm graph, a fill or a performance mode adds are level 4.
+- **The link:** ENERGY goes to Abyss Engine (CC 109) when it moves, and follows Abyss Engine's.
+
+## ROUTES (hold SEQ)
+
+![SEQ held: the ROUTE layer, the routes on the black keys, a drawn route 1 5 9 13](img/route_layer.png "ROUTE")
+
+A route is the way the playhead walks through the steps; the steps stay as they are, the bar stays a bar. On the
+break this re-chops it live.
+
+- **Black 1–9:** FORWARD, REVERSE, PENDULUM (the first half, then back), SNAKE and SPIRAL (the 16 steps as a 4 × 4
+  field), SWAP (the second half first), STUTTER (1 1 2 3 in every beat), WALK (a random walk, the same each pass of
+  a bar, back on 1 every bar), CUSTOM (the drawn one).
+- **White keys pressed in order:** draw a CUSTOM route; it plays from the second key on (4 keys: those 4 steps in
+  turn).
+- **K1 TARGET:** the selected track, BREAK, or ALL tracks. **K2 LATCH:** off, the route ends when you let go of SEQ;
+  on, it is written into the tracks (it stays, is saved, SEL + LFO undoes it).
+- The main page shows a route in force: ROUTE and its name, and in each box the position it plays at.
+
+![The main page with the route STUTTER on the kick: the order in the boxes](img/route_main.png "A route on the main page")
+
+## DNA (SEQ, second tap)
+
+![DNA: the family tree, genome 5 playing](img/dna.png "DNA")
+
+Breed grooves instead of programming them. The tree starts from the pattern playing when you first open the page.
+
+- **LFO (tap):** BREED: a child of the playing genome (the break's slices swapped for others of their kind, drum
+  hits moved a 16th, the beats kept; K1 MUTATE how far). The child plays from the next bar.
+- **White 1–16:** play that genome from the next bar.
+- **Black 1 KEEP:** a star on the playing genome; kept genomes are never culled. **Black 2 KILL:** the playing
+  genome and its children (the root stays). **Black 3 CROSS:** then press parent A and parent B: a child with A's
+  drums and B's break. **Black 4 NEW:** a new tree from the pattern now.
+- Up to 16 genomes; when full, the oldest leaf without a star goes. **Hold SAVE + white 9–12:** the playing genome
+  into P1–P4. A genome plays in the current pattern's slot; SEL + LFO brings the slot back as it was before.
+- The tree is not saved; patterns you store are.
+
+## TAPE DECAY (SONG K4)
+
+![The kick after a record pass with TAPE DECAY on: fading steps framed dim](img/decay.png "TAPE DECAY")
+
+With DECAY on, everything REC records fades a little every bar and goes after a while, like a tape echo: an
+improvised pattern that lives while you keep playing into it. **Hold a step for half a second** (without turning
+anything) to burn it in: it stays (a white line on top). Fading steps have a dim frame. DECAY's amount sets how
+fast: at 5 % a full-velocity step lasts about 60 bars, at 100 % about 9.
 
 ## SOUND (EDIT)
 
@@ -300,7 +359,9 @@ is −0.5 dBFS; the guard has no look-ahead, so it isn't a true-peak limiter.
 
 ![SYSTEM: clock, link, bank, load](img/system.png "SYSTEM: clock, link, bank, load")
 
-K1 BPM, K2 CLOCK (INT / MIDI in), K3 LINK CH, K4 SYNC OUT (clock and transport out). PRESET: the USB port as a host
+K1 BPM, K2 CLOCK (INT / MIDI in), K3 LINK CH, K4 SYNC OUT (clock and transport out). ALGO: BREAK-LOCK (0.6: moved here
+from SONG): OFF; LAYER (the synth kick and snare also play where the break plays a kick or snare slice); SEPARATE
+(they skip those steps, so nothing doubles). PRESET: the USB port as a host
 (to host the other FM-1 over an OTG cable; unverified on hardware). The page shows the load and dropouts, the
 clock, the link, the bank, the store's state ("DEFAULTS USED" when saved data did not check), queue and command
 drops, the USB mode.
@@ -308,7 +369,8 @@ drops, the USB mode.
 **Saving.** SAVE saves the settings, the four patterns and the scenes; while playing it is refused, since a flash
 write stalls the audio. 3 seconds after STOP (or after your last change while stopped) Break Surgeon saves by itself
 (AUTOSAVED). Version 0.5 saves in a new layout (trig conditions, the phrase, the FORM): the first start after the
-update uses the default settings (SETTINGS DEFAULTS LOADED) and the factory patterns; the scenes are kept.
+update uses the default settings (SETTINGS DEFAULTS LOADED) and the factory patterns; the scenes are kept. Version 0.6
+patterns carry levels and routes: patterns saved by 0.5 load as the factory ones once; settings and scenes are kept.
 
 ## MIDI
 
