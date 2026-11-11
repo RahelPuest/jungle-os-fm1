@@ -61,7 +61,7 @@ typedef struct {
     /* sequencing */
     js_pattern_t pat[BS_NPATTERNS];
     js_pattern_t undo;                 /* the break track before the last mutation (one level) */
-    uint8_t undo_valid, undo_pattern;
+    uint8_t undo_valid, undo_pattern, undo_all; /* undo_all: a groove was loaded (the whole pattern back) */
     uint8_t cur_pat, next_pat;         /* next_pat != cur_pat: a switch at the bar */
     js_clock_t clock;
     js_seq_t seq;
@@ -127,6 +127,12 @@ void bs_midi_clock_in(bs_engine_t *e, uint32_t t24);  /* following an external c
 void bs_set_lock_hooks(uint32_t (*lock)(void), void (*unlock)(uint32_t));
 void bs_mutate(bs_engine_t *e, float amount, uint32_t seed); /* the break track, anchors kept if e->anchors */
 int bs_undo(bs_engine_t *e);                                 /* 0 = restored */
+/* (0.4) the groove library: the classic drum & bass patterns, loaded into the current pattern's BREAK, KICK, SNARE,
+ * GHOST and HATS tracks (PERC and IMPACT kept); the break re-chopped to the groove by its slices' classes.
+ * Undone by bs_undo */
+#define BS_NGROOVES 14
+extern const char *const bs_groove_name[BS_NGROOVES];
+void bs_groove(bs_engine_t *e, int g);
 void bs_ghosts(bs_engine_t *e, float density, uint32_t seed);/* generates the GHOST track */
 void bs_default_patterns(bs_engine_t *e);
 void bs_scene_store(bs_engine_t *e, int s);

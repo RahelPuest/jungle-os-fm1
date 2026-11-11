@@ -187,6 +187,99 @@ turn ALGO 1
 wait 150
 turn ALGO 1
 wait 150
+# CALL & RESPONSE (SEL + SEQ): the form A B A C on the SEQUENCE page, B's and C's every line and sound
+press SEL
+tap SEQ
+release SEL
+wait 3000
+shot ab_cr.png
+wait 2800
+shot ab_cr_c.png
+turn K1 -1
+wait 120
+turn K1 1
+wait 120
+turn K1 1
+wait 120
+turn K1 1
+wait 120
+turn K1 1
+wait 120
+turn K1 1
+wait 120
+turn K3 -1
+wait 120
+turn K3 1
+wait 120
+turn K3 1
+wait 120
+turn K3 1
+wait 120
+turn K3 1
+wait 120
+turn K3 1
+wait 120
+turn K2 -1
+wait 120
+turn K2 1
+wait 120
+turn K2 1
+wait 120
+turn K2 1
+wait 120
+turn K2 1
+wait 120
+turn K2 1
+wait 120
+turn K2 1
+wait 120
+turn K2 1
+wait 120
+turn K2 1
+wait 120
+turn K2 1
+wait 120
+turn K2 1
+wait 120
+turn K2 1
+wait 120
+turn K4 -1
+wait 120
+turn K4 1
+wait 120
+turn K4 1
+wait 120
+turn K4 1
+wait 120
+turn K4 1
+wait 120
+turn K4 1
+wait 120
+turn K4 1
+wait 120
+turn K4 1
+wait 120
+turn K4 1
+wait 120
+turn K4 1
+wait 120
+turn K4 1
+wait 120
+turn K4 1
+wait 120
+turn K2 -2
+turn K4 -3
+wait 150
+press SEL
+wait 150
+release SEL
+tap HOME
+wait 1500
+shot ab_cr_perform.png
+press SEL
+tap SEQ
+release SEL
+wait 200
 turn K1 100
 wait 150
 tap PLAY

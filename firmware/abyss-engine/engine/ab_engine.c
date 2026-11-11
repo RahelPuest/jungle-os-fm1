@@ -110,16 +110,38 @@ int ab_revert(ab_engine_t *e)
     return 0;
 }
 
-/* the bass patch for this block: the graph (path, explored node or mutation), then BITE and the locks */
+/* ------------------------------------------------------ call & response --- */
+const uint8_t AB_CR_FORM[AB_CR_BARS] = {0, 1, 0, 2};
+
+int ab_cr_part(const ab_engine_t *e, uint32_t abs) { return e->cr_on ? AB_CR_FORM[(abs >> 4) % AB_CR_BARS] : 0; }
+
+void ab_set_cr(ab_engine_t *e, int on)
+{
+    e->cr_on = (uint8_t)(on != 0);
+    if (!on) e->cr_play = 0;
+}
+
+/* the bass track 16th abs plays: the pattern's (A, or a response on A's line), or a response's line */
+static const js_track_t *bass_src(const ab_engine_t *e, uint32_t abs)
+{
+    int part = ab_cr_part(e, abs);
+    int line = part ? e->cr[part - 1].line : -1;
+    return line >= 0 && line < AB_NPATTERNS ? &e->pat[line].t[AB_T_BASS] : &e->seq.pat->t[AB_T_BASS];
+}
+
+/* the bass patch for this block: the graph (path, explored node or mutation; a response's own node), then BITE and
+ * the locks */
 static void patch_update(ab_engine_t *e)
 {
     uint32_t i;
     float bite = e->bite_lock >= 0.0f ? e->bite_lock : e->bite;
     float target = e->morph_lock >= 0 ? (float)e->morph_lock * (1.0f / 255.0f) : e->morph;
     e->morph_s += (target - e->morph_s) * (e->morph_lock >= 0 ? 0.5f : 0.15f); /* ~20 ms knob smoothing */
-    if (e->explore_node >= 0) jg_eval_node(&e->fm, (uint32_t)e->explore_node, &e->fv);
+    int resp = e->cr_on && e->cr_play ? e->cr[e->cr_play - 1u].node : -1;
+    if (resp >= 0 && (uint32_t)resp < e->fm.nnodes) jg_eval_node(&e->fm, (uint32_t)resp, &e->fv);
+    else if (e->explore_node >= 0) jg_eval_node(&e->fm, (uint32_t)e->explore_node, &e->fv);
     else jg_eval(&e->fm, e->morph_s, &e->fv);
-    if (e->mutated) {
+    if (e->mutated && resp < 0) {
         for (i = 0; i < JN_NPARAMS; i++) e->fv.norm[i] = e->mutate_v[i];
         for (i = 0; i < JN_NPARAMS; i++) e->fv.phys[i] = jg_to_phys(&FMP[i], e->mutate_v[i]);
     }
@@ -267,26 +289,32 @@ static void fire(ab_engine_t *e, const js_event_t *ev)
 static void fire_(ab_engine_t *e, const js_event_t *ev)
 {
     float vel = (float)ev->vel * (1.0f / 127.0f), sps = js_clock_samples_per_step(&e->clock);
-    int lk;
     switch (ev->track) {
     case AB_T_BASS: {
-        const js_track_t *t = &e->seq.pat->t[AB_T_BASS];
-        const js_step_t *nx = &t->s[(ev->step + 1u) % (t->len ? t->len : 16u)];
-        int oct = js_step_lock((const js_step_t *)&t->s[ev->step], AB_LK_OCT);
-        float note = (float)(e->root + (int)ev->data - 64) + (oct >= 0 ? 12.0f * (float)(oct - 2) : 0.0f);
+        /* the step's line: the pattern's, or (CALL & RESPONSE) a response's, which xform put in its place */
+        const js_track_t *t = bass_src(e, ev->abs_step);
+        uint32_t len = t->len ? t->len : 16u, idx = t == &e->seq.pat->t[AB_T_BASS] ? ev->step : ev->abs_step % len;
+        const js_step_t *nx = &t->s[(idx + 1u) % len];
+        int oct = -1;
+        float note;
         uint32_t i;
         e->morph_lock = -1;
         e->bite_lock = -1.0f;
         for (i = 0; i < JS_NLOCK; i++) {
             if (ev->lk_id[i] == AB_LK_MORPH) e->morph_lock = ev->lk_val[i];
             if (ev->lk_id[i] == AB_LK_BITE) e->bite_lock = (float)ev->lk_val[i] * (1.0f / 255.0f);
+            if (ev->lk_id[i] == AB_LK_OCT) oct = ev->lk_val[i];
         }
+        if (ab_cr_part(e, ev->abs_step) != (int)e->cr_play) { /* a new part of the form: its sound from this note on */
+            e->cr_play = (uint8_t)ab_cr_part(e, ev->abs_step);
+            patch_update(e);
+        }
+        note = (float)(e->root + (int)ev->data - 64) + (oct >= 0 ? 12.0f * (float)(oct - 2) : 0.0f);
         if (e->fill_on) note += ev->hit ? 12.0f : 0.0f; /* the link's fill: octave jumps on the rolls */
         bass_on(e, note, vel, (ev->flags & JS_SLIDE) != 0);
         /* the gate: past the next step when it slides (legato), else 3/4 of a step (or of a ratchet hit) */
         e->bass_gate_left = (nx->flags & JS_ON) && (nx->flags & JS_SLIDE) ? (uint32_t)(sps * 1.1f)
                                                                            : (uint32_t)(sps * 0.75f / (float)ev->nhits);
-        (void)lk;
         break;
     }
     case AB_T_STAB:
@@ -303,6 +331,10 @@ static void fire_(ab_engine_t *e, const js_event_t *ev)
 static int xform(void *ctx, uint32_t t, uint32_t abs, js_step_t *st)
 {
     ab_engine_t *e = (ab_engine_t *)ctx;
+    if (t == AB_T_BASS && e->cr_on) { /* CALL & RESPONSE: a response's bar plays its own line's step */
+        const js_track_t *src = bass_src(e, abs);
+        if (src != &e->seq.pat->t[AB_T_BASS]) *st = src->s[abs % (src->len ? src->len : 16u)];
+    }
     if (t == AB_T_BASS && e->fill_on && (st->flags & JS_ON) && (abs & 15u) >= 8u)
         st->ratch = (uint8_t)((abs & 15u) >= 12u ? 2 : 1); /* the fill's rolls in the bass */
     if (t == AB_T_STAB && e->voice_mode == AB_VOICE_BASS_ONLY) return 0;
@@ -390,6 +422,8 @@ void ab_init(ab_engine_t *e, int16_t *pool)
     e->energy = 0.5f;
     e->follow_link = 1;
     e->duck_depth = 0.6f;
+    e->cr[0].line = -1, e->cr[0].node = 8;  /* B: A's line as REESE */
+    e->cr[1].line = 1, e->cr[1].node = 6;   /* C: P2's line as LASER, the turnaround */
     graph_init(e);
     patch_update(e);
     js_clock_init(&e->clock, 174.0f);

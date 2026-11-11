@@ -200,6 +200,7 @@ void bs_mutate(bs_engine_t *e, float amount, uint32_t seed)
     amount = jo_clampf(amount, 0.0f, 1.0f);
     e->undo = *p;
     e->undo_valid = 1;
+    e->undo_all = 0;
     e->undo_pattern = e->cur_pat;
     for (i = 0; i < len; i++) {
         js_step_t *st = &tmp.s[i];
@@ -228,10 +229,125 @@ int bs_undo(bs_engine_t *e)
     uint32_t f;
     if (!e->undo_valid) return -1;
     f = lock_fn();
-    e->pat[e->undo_pattern].t[BS_T_BREAK] = e->undo.t[BS_T_BREAK];
+    if (e->undo_all) e->pat[e->undo_pattern] = e->undo;
+    else e->pat[e->undo_pattern].t[BS_T_BREAK] = e->undo.t[BS_T_BREAK];
     unlock_fn(f);
     e->undo_valid = 0;
     return 0;
+}
+
+/* ---------------------------------------------------------------- grooves --- */
+/* the classic drum & bass patterns, as the genre plays them (common forms, written here on the 16th grid; not
+ * transcriptions of any recording). Per groove: KICK, SNARE, GHOST, HATS as 16 or 32 characters ('X' accent,
+ * 'x' on, 'o' soft, 'g' ghost, 'O' open hat, '.' off), the swing; the break follows the kick and snare */
+typedef struct { const char *k, *s, *g, *h; uint8_t swing; } groove_t;
+const char *const bs_groove_name[BS_NGROOVES] = {
+    "2-STEP", "DELAYED 2-STEP", "STEPPA", "EXTENDED STEPPA", "STOMPA", "HALF-TIME", "DANCEHALL", "FOOTWORK",
+    "TRIPLET 2-STEP", "ROLLER", "JUMP UP", "TECHSTEP", "DANCEFLOOR", "AMEN"};
+static const groove_t GROOVE[BS_NGROOVES] = {
+    /* 2-STEP: the kick on 1 and the and of 3, the snare on 2 and 4: the backbone */
+    {"X.........x.....", "....X.......X...", "......g.......g.", "..x...x...x...x.", 50},
+    /* DELAYED 2-STEP: the second snare a 16th late */
+    {"X.........x.....", "....X........X..", "..........g....g", "..x...x...x...x.", 50},
+    /* STEPPA: the kick on 1 and 3, straight, steppy */
+    {"X.......X.......", "....X.......X...", "..g........g....", "x.x.x.x.x.x.x.x.", 50},
+    /* EXTENDED STEPPA: two bars, the second's kick pushed and a snare pickup */
+    {"X.......X.......X.......X.x.....", "....X.......X.......X.......X..x", "..g........g......g.....g.......",
+     "x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.x.", 50},
+    /* STOMPA: the kick stomping through the and of 2 into 3 */
+    {"X.....x.X.......", "....X.......X...", "..............g.", "..x...x...x...x.", 50},
+    /* HALF-TIME: one snare a bar, on 3 */
+    {"X.........x.....", "........X.......", "...............g", "x...x...x...x...", 50},
+    /* DANCEHALL: the kick on 1 and 3 under the dembow's snares */
+    {"X.......X.......", "...x..X....x..X.", "................", "..x...x...x...x.", 50},
+    /* FOOTWORK: dotted kicks against the backbeat, the fake triplets */
+    {"X..x..x...x..x..", "....X.......X...", "................", "..x...x...x...x.", 50},
+    /* TRIPLET 2-STEP: the 2-step shuffled, 16th hats swung hard */
+    {"X.........x.....", "....X.......X...", ".......g......g.", "xoxoxoxoxoxoxoxo", 67},
+    /* ROLLER: 2-step with rolling ghosts and 16th hats, a little swing */
+    {"X.........x.....", "....X.......X...", ".g....g..g....g.", "xoxoxoxoxoxoxoxo", 56},
+    /* JUMP UP: the kick bouncing on 3 and its and */
+    {"X.......X.x.....", "....X.......X...", "..............g.", "..x...x...x...x.", 50},
+    /* TECHSTEP: hard and straight, the kick pushing at 4 */
+    {"X.........X..x..", "....X.......X...", "................", "x.x.x.x.x.x.x.x.", 50},
+    /* DANCEFLOOR: a kick before the second snare, ghosts ahead of the snares */
+    {"X......x..X.....", "....X.......X...", "...g..........g.", "..x...x...x...x.", 50},
+    /* AMEN: the break alone, as it is */
+    {"", "", "", "", 50},
+};
+
+static void groove_track(js_track_t *t, const char *s, uint32_t len)
+{
+    uint32_t i;
+    for (i = 0; i < JS_MAXSTEPS; i++) js_step_clear(&t->s[i]);
+    t->len = (uint8_t)len;
+    t->div = 0;
+    for (i = 0; i < len && s[i]; i++) {
+        js_step_t *st = &t->s[i];
+        st->data = (uint8_t)i;
+        switch (s[i]) {
+        case 'x': st->flags = JS_ON; st->vel = 100; break;
+        case 'X': st->flags = JS_ON | JS_ACCENT; st->vel = 122; break;
+        case 'o': st->flags = JS_ON; st->vel = 60; break;
+        case 'g': st->flags = JS_ON; st->vel = 38; break;
+        case 'O': st->flags = JS_ON | BS_FLAG_OPEN; st->vel = 80; break;
+        default: break;
+        }
+    }
+}
+
+/* the slice of class cls nearest to position pos (of n, circular), or -1 */
+static int near_slice(const jb_break_t *b, uint32_t n, uint32_t pos, int cls)
+{
+    uint32_t d, best = 0xFFu;
+    int pick = -1;
+    for (d = 0; d < n; d++) {
+        uint32_t dist = d > pos % n ? d - pos % n : pos % n - d;
+        if (dist > n - dist) dist = n - dist;
+        if (b->cls[d] == (uint8_t)cls && dist < best) best = dist, pick = (int)d;
+    }
+    return pick;
+}
+
+void bs_groove(bs_engine_t *e, int g)
+{
+    const groove_t *gr = &GROOVE[(uint32_t)g % BS_NGROOVES];
+    js_pattern_t p = e->pat[e->cur_pat];
+    const jb_break_t *b = &e->breaks[e->cur_break];
+    uint32_t n = b->nslices ? b->nslices : 16u, len = 0, i, f;
+    js_track_t *br = &p.t[BS_T_BREAK];
+    while (gr->k[len] && len < JS_MAXSTEPS) len++;
+    if (!len) len = 16u;
+    groove_track(&p.t[BS_T_KICK], gr->k, len);
+    groove_track(&p.t[BS_T_SNARE], gr->s, len);
+    groove_track(&p.t[BS_T_GHOST], gr->g, len);
+    groove_track(&p.t[BS_T_HATS], gr->h, len);
+    /* the break: every 16th a slice; on a kick the nearest kick slice, on a snare the nearest snare slice, on a
+     * ghost a snare slice played soft, else the nearest slice of neither (the ride, the hats); a bank without
+     * classes plays its slices in order */
+    for (i = 0; i < JS_MAXSTEPS; i++) js_step_clear(&br->s[i]);
+    br->len = (uint8_t)len;
+    br->div = 0;
+    for (i = 0; i < len; i++) {
+        js_step_t *st = &br->s[i];
+        uint32_t pos = (i * n / 16u) % n;
+        int k = gr->k[0] ? gr->k[i] != '.' : 0, s = gr->k[0] ? gr->s[i] != '.' : 0, gh = gr->k[0] ? gr->g[i] != '.' : 0;
+        int sl = k ? near_slice(b, n, pos, JB_CLASS_KICK) : s || gh ? near_slice(b, n, pos, JB_CLASS_SNARE)
+                                                                      : near_slice(b, n, pos, JB_CLASS_HAT);
+        if (!gr->k[0] || sl < 0) sl = (int)pos;
+        if (!gr->k[0] || k || s) st->vel = 110;
+        else st->vel = gh ? 64 : 90;
+        st->flags = JS_ON;
+        st->data = (uint8_t)sl;
+    }
+    p.swing = gr->swing;
+    f = lock_fn();
+    e->undo = e->pat[e->cur_pat];
+    e->undo_valid = 1;
+    e->undo_all = 1;
+    e->undo_pattern = e->cur_pat;
+    e->pat[e->cur_pat] = p;
+    unlock_fn(f);
 }
 
 /* --------------------------------------------------------------- scenes --- */

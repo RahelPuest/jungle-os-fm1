@@ -39,6 +39,7 @@ static const char *const LOCK_NAME[3] = {"OFF", "LAYER", "SEPARATE"};
 static struct {
     uint8_t page, track, step_page, redraw;
     int8_t held_step;                      /* SEQUENCE: the white key held (-1) */
+    int8_t groove, groove_of[BS_NPATTERNS]; /* SEQUENCE: the groove last loaded, and into which pattern (-1) */
     uint32_t key_used;                     /* keys whose hold did something (no toggle on release) */
     int8_t hi_macro;                       /* the macro box last turned */
     uint32_t hi_until;
@@ -315,6 +316,8 @@ void app_init(void)
     eng.midi_out = link_out;
     load_all();
     ui.held_step = -1;
+    ui.groove = -1;
+    for (uint32_t i = 0; i < BS_NPATTERNS; i++) ui.groove_of[i] = -1;
     ui.hi_macro = -1;
     ui.mutate_amt = 0.5f;
     ui.ghost_density = 0.45f;
@@ -466,6 +469,15 @@ static void scene_key(int s)
     app_say(SCENE_NAME[s], QUANT_NAME[set.scene_quant]);
 }
 
+/* UNDO (SEL + LFO): the last mutation, or the pattern before the last groove; what it said */
+static const char *undo_say(void)
+{
+    int all = eng.undo_all;
+    uint8_t p = eng.undo_pattern;
+    if (bs_undo(&eng)) return "NOTHING TO UNDO";
+    if (all) { ui.groove_of[p % BS_NPATTERNS] = -1; return "PATTERN RESTORED"; }
+    return "BREAK RESTORED";
+}
 static const char *const PATTERN_NAME[BS_NPATTERNS] = {"P1 DROP", "P2 ROLLER", "P3 HALF-TIME", "P4 INTRO"};
 static void pattern_step(int dir)
 {
@@ -500,7 +512,7 @@ static void input(void)
         app_say(two ? "FILL 2 BARS" : "FILL 1 BAR", "FROM THE NEXT BAR");
     }
     if (ui_tapped(in, B_LFO)) {
-        if (ui_held(in, B_SEL)) { ui_use(in, B_SEL); app_say("UNDO", bs_undo(&eng) ? "NOTHING TO UNDO" : "BREAK RESTORED"); }
+        if (ui_held(in, B_SEL)) { ui_use(in, B_SEL); app_say("UNDO", undo_say()); }
         else { bs_mutate(&eng, ui.mutate_amt, ui.mutate_seed++); app_say("MUTATE", "SEL+LFO: UNDO"); }
         dirty = 1;
     }
@@ -541,7 +553,7 @@ static void input(void)
                 if (b < 8) scene_key(b);
                 else if (b == 8) bs_cmd_fill(&eng, 2), app_say("FILL", "2 BARS");
                 else if (b == 9) bs_cmd_fill(&eng, 4), app_say("FILL", "4 BARS");
-                else app_say("UNDO", bs_undo(&eng) ? "NOTHING TO UNDO" : "BREAK RESTORED");
+                else app_say("UNDO", undo_say());
             }
             break;
         case PG_SEQ:
@@ -559,7 +571,7 @@ static void input(void)
                 if (b < BS_NTRACKS) ui.track = (uint8_t)b;
                 else if (b == 7) { bs_ghosts(&eng, ui.ghost_density, ui.mutate_seed++); app_say("GHOSTS", "GENERATED"); dirty = 1; }
                 else if (b == 8) { bs_mutate(&eng, ui.mutate_amt, ui.mutate_seed++); app_say("MUTATE", "B10: UNDO"); dirty = 1; }
-                else if (b == 9) app_say("UNDO", bs_undo(&eng) ? "NOTHING TO UNDO" : "BREAK RESTORED");
+                else if (b == 9) app_say("UNDO", undo_say());
                 else if (ui.held_step >= 0 && ui.track == BS_T_HATS) {
                     js_step_t *st = &eng.pat[eng.cur_pat].t[BS_T_HATS].s[(ui.step_page * 16 + ui.held_step) % JS_MAXSTEPS];
                     st->flags ^= BS_FLAG_OPEN;
@@ -604,6 +616,11 @@ static void input(void)
                 if (js_step_set_lock(st, BS_LK_TUNE, jo_clampi((cur < 0 ? 128 : cur) + 4 * d, 0, 255))) app_say("LOCKS", "TWO PER STEP");
             }
             st->flags |= JS_ON;
+        } else if (ui.page == PG_SEQ) { /* (0.4) GROOVE: the next / previous classic pattern into this one */
+            ui.groove = (int8_t)((ui.groove + (d > 0 ? 1 : BS_NGROOVES - 1)) % BS_NGROOVES);
+            bs_groove(&eng, ui.groove);
+            ui.groove_of[eng.cur_pat] = ui.groove;
+            app_say(bs_groove_name[ui.groove], "SEL+LFO: UNDO");
         } else if (ui.page == PG_PERFORM) {
             app_say("KIT", bs_kit_step(&eng, d)); /* EXPLORE the kit's sweetspots, one node a click */
         } else if (ui.page == PG_FX) {
@@ -757,7 +774,7 @@ static void draw_body(void)
             if (st->flags & BS_FLAG_OPEN && ui.track == BS_T_HATS) ui_cat(t, " OPEN");
             ui_fit(130, 96, 234 - (130), &FONT_XS, t, C_WHITE);
         } else
-            ui_fit(130, 96, 234 - (130), &FONT_XS, PATTERN_NAME[eng.cur_pat], C_GRAY);
+            ui_fit(130, 96, 234 - (130), &FONT_XS, ui.groove_of[eng.cur_pat] >= 0 ? bs_groove_name[ui.groove_of[eng.cur_pat]] : PATTERN_NAME[eng.cur_pat], C_GRAY);
         break;
     case PG_SOUND:
         ui_fit(6, 2, 234 - (6), &FONT_M, bs_track_name[ui.track], C_HI);
@@ -878,7 +895,7 @@ static void draw_strip(void)
             if (ui.track == BS_T_HATS) g[n++] = (ui_kg_t)UI_B(10, 10, "OPEN");
             else if (ui.track == BS_T_BREAK) g[n++] = (ui_kg_t)UI_B(10, 10, "REV");
             enc[0] = "TRACK";
-            enc[1] = ui.held_step >= 0 ? (ui.track == BS_T_BREAK ? "SLICE" : "TUNE") : 0;
+            enc[1] = ui.held_step >= 0 ? (ui.track == BS_T_BREAK ? "SLICE" : "TUNE") : "GROOVE";
             enc[2] = "PATTERN";
             break;
         case PG_SOUND:

@@ -124,6 +124,37 @@ TEST(test_breaklock_separate)
     CHECKF(n_layer > n_sep, "layer %u > separate %u", n_layer, n_sep);
 }
 
+/* (0.4) the groove library: each groove's kicks and snares on the break's kick and snare slices, undo brings the
+ * pattern back */
+TEST(test_grooves)
+{
+    uint32_t g, i, bad = 0;
+    js_pattern_t before;
+    bs_start(174.0f);
+    before = BS.pat[BS.cur_pat];
+    for (g = 0; g < BS_NGROOVES; g++) {
+        const js_pattern_t *p = &BS.pat[BS.cur_pat];
+        const jb_break_t *b = &BS.breaks[BS.cur_break];
+        bs_groove(&BS, (int)g);
+        for (i = 0; i < p->t[BS_T_BREAK].len; i++) {
+            uint8_t cls = b->cls[p->t[BS_T_BREAK].s[i].data % b->nslices];
+            if ((p->t[BS_T_KICK].s[i].flags & JS_ON) && cls != JB_CLASS_KICK) bad++;
+            if ((p->t[BS_T_SNARE].s[i].flags & JS_ON) && !(p->t[BS_T_KICK].s[i].flags & JS_ON) && cls != JB_CLASS_SNARE) bad++;
+        }
+        bs_go(0.5f * bar_s(174.0f));
+    }
+    CHECKF(bad == 0, "%u groove steps off their class", bad);
+    CHECK(strcmp(bs_groove_name[0], "2-STEP") == 0);
+    bs_groove(&BS, 0);
+    CHECK((BS.pat[BS.cur_pat].t[BS_T_KICK].s[0].flags & JS_ON) && (BS.pat[BS.cur_pat].t[BS_T_KICK].s[10].flags & JS_ON));
+    CHECK((BS.pat[BS.cur_pat].t[BS_T_SNARE].s[4].flags & JS_ON) && (BS.pat[BS.cur_pat].t[BS_T_SNARE].s[12].flags & JS_ON));
+    CHECK(BS.pat[BS.cur_pat].t[BS_T_BREAK].s[0].data == 0 && BS.pat[BS.cur_pat].t[BS_T_BREAK].s[4].data == 4);
+    CHECK(bs_undo(&BS) == 0); /* back to the groove before (AMEN, the last of the loop) */
+    bs_groove(&BS, 3);
+    CHECK(BS.pat[BS.cur_pat].t[BS_T_KICK].len == 32);
+    (void)before;
+}
+
 static void ab_go(float seconds)
 {
     uint32_t i, n = (uint32_t)(seconds * JO_SR / 128.0f);
@@ -213,6 +244,52 @@ TEST(test_C_voices_and_F_standalone)
     CHECKF(fabsf(AB.clock.bpm - 170.0f) < 1.0f, "kept bpm %f", (double)AB.clock.bpm);
 }
 
+/* CALL & RESPONSE: the bass's form A B A C. B (A's line as REESE) plays A's notes in REESE's sound; C plays P2's
+ * line as LASER; A keeps the pattern's line and the knobs' sound */
+static uint8_t cr_note[4][16], cr_hit[4][16], cr_node[4];
+static void cr_trace(void *ctx, const js_event_t *ev)
+{
+    ab_engine_t *e = (ab_engine_t *)ctx;
+    uint32_t bar = (ev->abs_step >> 4) & 3u, st = ev->abs_step & 15u;
+    if (ev->track != AB_T_BASS || ev->hit || ev->abs_step >= 64u) return;
+    cr_note[bar][st] = ev->data, cr_hit[bar][st] = 1;
+    (void)e;
+}
+TEST(test_call_response)
+{
+    uint32_t bar, st, same_ab = 1, c_is_p2 = 1, a_is_p1 = 1;
+    const js_track_t *p1, *p2;
+    ab_init(&AB, pool);
+    memset(cr_hit, 0, sizeof cr_hit);
+    AB.trace = cr_trace, AB.trace_ctx = &AB;
+    ab_set_cr(&AB, 1);
+    CHECK(ab_cr_part(&AB, 0) == 0 && ab_cr_part(&AB, 16) == 1 && ab_cr_part(&AB, 32) == 0 && ab_cr_part(&AB, 48) == 2);
+    ab_cmd_bpm(&AB, 174.0f);
+    ab_cmd_play(&AB, 1);
+    for (bar = 0; bar < 4u; bar++) {
+        ab_go(bar_s(174.0f) * 0.5f);   /* into the bar's middle: its part has sounded */
+        cr_node[bar] = AB.fv.near;
+        ab_go(bar_s(174.0f) * 0.5f);
+    }
+    p1 = &AB.pat[0].t[AB_T_BASS], p2 = &AB.pat[1].t[AB_T_BASS];
+    for (st = 0; st < 16u; st++) {
+        if (cr_hit[1][st] != cr_hit[0][st] || (cr_hit[0][st] && cr_note[1][st] != cr_note[0][st])) same_ab = 0;
+        if (cr_hit[0][st] != ((p1->s[st].flags & JS_ON) != 0) || (cr_hit[0][st] && cr_note[0][st] != p1->s[st].data)) a_is_p1 = 0;
+        if (cr_hit[3][st] != ((p2->s[st].flags & JS_ON) != 0) || (cr_hit[3][st] && cr_note[3][st] != p2->s[st].data)) c_is_p2 = 0;
+    }
+    CHECK(a_is_p1);
+    CHECK(same_ab);
+    CHECK(c_is_p2);
+    CHECKF(strcmp(AB.fm.node[cr_node[1]].name, "REESE") == 0, "B sounds as %s", AB.fm.node[cr_node[1]].name);
+    CHECKF(strcmp(AB.fm.node[cr_node[3]].name, "LASER") == 0, "C sounds as %s", AB.fm.node[cr_node[3]].name);
+    CHECKF(strcmp(AB.fm.node[cr_node[2]].name, "REESE") != 0 && strcmp(AB.fm.node[cr_node[2]].name, "LASER") != 0,
+           "A again sounds as %s", AB.fm.node[cr_node[2]].name);
+    /* off: the pattern alone again */
+    ab_set_cr(&AB, 0);
+    CHECK(ab_cr_part(&AB, 16) == 0 && AB.cr_play == 0);
+    AB.trace = 0;
+}
+
 TEST(test_scene_over_link)
 {
     /* Break Surgeon's scene command goes out as PREPARE + COMMIT; Abyss queues it for the same bar */
@@ -245,8 +322,10 @@ void run_engines(void)
     RUN(test_perf_return);
     RUN(test_link_out_kicks);
     RUN(test_breaklock_separate);
+    RUN(test_grooves);
     RUN(test_D_ducking);
     RUN(test_E_morph_loudness);
     RUN(test_C_voices_and_F_standalone);
     RUN(test_scene_over_link);
+    RUN(test_call_response);
 }

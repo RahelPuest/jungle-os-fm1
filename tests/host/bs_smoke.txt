@@ -186,3 +186,42 @@ wait 150
 key w2 up
 tap PLAY
 wait 300
+# (0.4) the groove library: SEQUENCE, ALGO through every groove (the names fit), then UNDO
+tap PLAY
+tap SEQ
+wait 200
+turn ALGO 1
+wait 300
+shot bs_groove.png
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+turn ALGO 1
+wait 300
+press SEL
+tap LFO
+release SEL
+wait 200
+tap PLAY
+wait 200

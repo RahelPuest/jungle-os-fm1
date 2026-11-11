@@ -53,6 +53,9 @@ Both firmwares share their buttons, so a gesture on one does the same on the oth
 | SAVE + white 1–8 | store scene 1–8 | store scene 1–8 |
 | SEL + black | mute track 1–7 | mute BASS, STAB, PAD |
 | PERFORM: ALGO / PRESET | the kit one sweetspot along / SNAP | EXPLORE / SNAP |
+| SEL + SEQ | — | CALL & RESPONSE: the bass in a 4-bar form A B A C |
+
+**Call and response across the rig:** with Abyss's CALL & RESPONSE on, the answers B and C land on bars 2 and 4 of every 4 bars, the same grid Break Surgeon's scenes and fills use. A 1-bar fill on Break Surgeon (ENV) in bar 4 under C makes that bar the turnaround of the phrase.
 
 Each screen shows, at the bottom, what the keys and encoders do right now, and what they do with SEL or SAVE held.
 

@@ -18,6 +18,8 @@ FM-1 yet**.
 7. **SEL + white 1–8** queues scene 1–8. **SAVE + white 1–8** stores the current state there.
 8. **SEL + REC** holds the pad chord (PAD HOLD) and releases it again.
 
+And one more: **SEL + SEQ** turns on CALL & RESPONSE, a 4-bar bass form A B A C (see CALL & RESPONSE below).
+
 You don't have to remember any of this: the screen shows, on every page, what each key and each encoder does.
 
 The same buttons do the same things on BREAK SURGEON: PLAY, REC (RETURN), ENV (FILL), LFO (MUTATE, SEL + LFO undo),
@@ -49,6 +51,7 @@ From top to bottom:
 | ENV | **FILL**: the bass's rolls and octave jumps up to the next bar | a 2-bar fill |
 | LFO | **MUTATE** the bass sound (radius: SEQUENCE K3) | **UNDO** the last mutation |
 | SAVE | save (refused while playing) | |
+| SEQ | the SEQUENCE page | **CALL & RESPONSE** on / off (and the SEQUENCE page) |
 | OCT− / OCT+ | keyboard octave (−2..+2) | |
 
 **On every page:** SEL + white 1–8 queues scene 1–8; SAVE + white 1–8 stores the current state as scene 1–8;
@@ -99,6 +102,40 @@ Three tracks, 16 steps shown: BASS, STAB, PAD (MUTED in red when muted). Lit ste
 | black 11 | mute the track |
 | PRESET | the next / previous pattern, at the next bar |
 | K1..K4 (no step held) | LENGTH (1–32; steps 17–32 are not editable on this page yet), SWING, MUTATE RADIUS, SPEED (1/16, 1/32, 1/8) |
+
+## CALL & RESPONSE
+
+![SEQUENCE with CALL & RESPONSE on: the form A B A C, the third bar playing; B is A's line as REESE, C is P2's line as LASER](img/call_response.png "CALL & RESPONSE on the SEQUENCE page")
+
+The bass plays a 4-bar form, **A B A C**: a call, an answer, the call again, a second answer that turns the phrase
+round. **SEL + SEQ** turns it on and off, from any page; it runs on the 4-bar grid, so it stays in step with
+scenes and with Break Surgeon.
+
+- **A** is the bass as it is: the pattern's bass line and the sound of the knobs (MORPH, EXPLORE, MUTATE, the
+  locks). Change the pattern and A changes.
+- **B** and **C** answer it. Each has its own **line** (A's, or the bass line of pattern P1–P4) and its own
+  **sound** (A's, or one of the ten sweetspots, REESE and REESE DARK included). Each new part takes its sound from
+  its first note on. The sub plays every part's notes, clean as always.
+- The defaults: B plays A's line as REESE (the same notes in another voice); C plays P2's line as LASER.
+
+On the SEQUENCE page, with CALL & RESPONSE on, the bottom of the page shows the form with the bar playing lit,
+and B's and C's line and sound. The knobs set them (when no step is held):
+
+| Knob | Does |
+|---|---|
+| K1 B LINE | A, P1, P2, P3, P4 |
+| K2 B SOUND | A, or a sweetspot: HOLLOW … BROKEN, REESE, REESE DARK |
+| K3 C LINE | as K1 |
+| K4 C SOUND | as K2 |
+
+Ideas:
+- A call in one sound, the answer in another on the same notes: B LINE A, B SOUND a contrasting node (REESE
+  against FM growls).
+- A sparse call and a busy answer: A on P3 (two notes a bar), C on P2.
+- A gap as the answer: a line from a pattern with no bass (P4 by default) leaves the bar to the drums.
+
+LENGTH, SWING, MUTATE RADIUS and SPEED are on the knobs again when CALL & RESPONSE is off. Its settings are saved
+with SAVE. PERFORM shows C&R A, B or C while it runs.
 
 ## SOUND (EDIT)
 

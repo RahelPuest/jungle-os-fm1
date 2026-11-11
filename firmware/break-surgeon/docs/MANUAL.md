@@ -17,6 +17,8 @@ drum & bass. Status: it runs in the simulators and the browser emulator; **it ha
 7. **SEL + white 1–8** queues scene 1–8 (INTRO, BUILD, DROP, …). **SAVE + white 1–8** stores the current state there.
 8. **White keys 9–15** mute BREAK, KICK, SNARE, GHOST, HATS, PERC, IMPACT.
 
+And one more: on SEQUENCE, **ALGO** loads a classic drum & bass groove (2-STEP, STEPPA, HALF-TIME …) into the pattern (see GROOVES below).
+
 You don't have to remember any of this: the screen shows, on every page, what each key and each encoder does.
 
 The same buttons do the same things on ABYSS ENGINE: PLAY, REC (RETURN), ENV (FILL), LFO (MUTATE, SEL + LFO undo),
@@ -69,7 +71,7 @@ SEL + black 1–7 mutes or unmutes track 1–7 (BREAK, KICK, SNARE, GHOST, HATS,
 | Page | SELECT | ALGO | PRESET |
 |---|---|---|---|
 | PERFORM | tempo (0.5 BPM a click) | **KIT NODE**: the kit one sweetspot along (as Abyss Engine's EXPLORE) | **SNAP**: BREAK and KIT to their nearest sweetspots (as Abyss Engine's SNAP) |
-| SEQUENCE | the track (SEL + SELECT: tempo) | a held step's slice (BREAK) or tune lock (drums) | the pattern, at the next bar |
+| SEQUENCE | the track (SEL + SELECT: tempo) | **GROOVE**: the next / previous groove into the pattern; with a step held, its slice (BREAK) or tune lock (drums) | the pattern, at the next bar |
 | SOUND | the track (SEL + SELECT: tempo) | PERC's voice: TOM, RIM, SHAKER, CLICK | the drum's level |
 | FX | tempo | the bus preset | **ROOM**; SEL + PRESET: the output trim |
 | SCENE, SYSTEM | tempo | — | SYSTEM: the USB port as a host |
@@ -117,7 +119,8 @@ page (OCT−/OCT+), the selected track marked at the left, muted tracks struck t
 | white key (hold) + black 11 | HATS: open / closed. BREAK: reverse the step |
 | black 1..7, SELECT | select BREAK, KICK, SNARE, GHOST, HATS, PERC, IMPACT |
 | black 8 | generate the GHOST track (density: K3) |
-| black 9 / 10 | MUTATE / UNDO |
+| black 9 / 10 | MUTATE / UNDO (also a groove's load) |
+| ALGO (no step held) | GROOVE: load the next / previous groove (below) |
 | K1..K4 (no step held) | track LENGTH (1–32), SWING (50–75 %), GHOST density, MUTATE amount |
 | PRESET | the pattern |
 
@@ -131,6 +134,38 @@ The four patterns, all at 174 BPM and straight (swing 50 %; the feel comes from 
 | P2 ROLLER | the break edited (its first half again, the last snare doubled into a roll), a rolling kick, 16th shakers, more ghosts |
 | P3 HALF-TIME | kick and snare at half time, the break on 8ths |
 | P4 INTRO | the break thinned out, no synthesized kick or snare |
+
+### GROOVES
+
+![SEQUENCE after ALGO: the 2-STEP groove loaded, its name at the bottom right](img/groove.png "The groove 2-STEP")
+
+**ALGO** on the SEQUENCE page (no step held) loads a groove into the current pattern, one a click: the classic
+drum & bass patterns. A groove writes the KICK, SNARE, GHOST and HATS tracks and the swing, and re-chops the break
+to it: on every kick the break plays its nearest kick slice, on every snare its nearest snare slice, on a ghost a
+snare slice played soft, in between its ride and hats. With your own bank this works from the slice classes that
+the sample-prep tool writes; without them the break plays in order. PERC and IMPACT stay as they are.
+**SEL + LFO** (or black 10) undoes the load: the pattern as it was. The pattern's name at the bottom right of the
+page becomes the groove's until you undo.
+
+| Groove | The pattern (16ths, 1 = the downbeat) |
+|---|---|
+| 2-STEP | kick on 1 and the "and" of 3, snare on 2 and 4: the backbone |
+| DELAYED 2-STEP | the second snare a 16th late |
+| STEPPA | kick on 1 and 3, straight 8th hats |
+| EXTENDED STEPPA | two bars: the second's kick pushed, a snare pickup at the end |
+| STOMPA | the kick stomping on the "and" of 2 into 3 |
+| HALF-TIME | one snare a bar, on 3; hats on the quarters |
+| DANCEHALL | kick on 1 and 3 under the dembow's snares |
+| FOOTWORK | dotted kicks against the backbeat (the "fake triplets") |
+| TRIPLET 2-STEP | the 2-step shuffled: 16th hats, swing 67 % |
+| ROLLER | the 2-step with rolling ghosts and 16th hats, swing 56 % |
+| JUMP UP | the kick bouncing on 3 and its "and" |
+| TECHSTEP | hard and straight, the kick pushing before 4 |
+| DANCEFLOOR | a kick before the second snare, ghosts ahead of the snares |
+| AMEN | the break alone, in order (the built-in break is the Amen pattern) |
+
+These are the genre's common forms written on the 16th grid; the names follow the usual names of the patterns
+(STRANJAH's tutorials on YouTube teach them under these names), the grids are this firmware's own versions.
 
 ## SOUND (EDIT)
 

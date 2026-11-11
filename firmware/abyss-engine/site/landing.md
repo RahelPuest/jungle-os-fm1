@@ -4,6 +4,8 @@ ABYSS ENGINE is the bass half of JUNGLE OS, a drum & bass live rig of two M-VAVE
 
 ![ABYSS ENGINE's PERFORM page: the bass node SNARL on the sweetspot path](img/home.png "ABYSS ENGINE on the FM-1's screen")
 
+New in 0.4: CALL & RESPONSE. SEL + SEQ sets the bass to a 4-bar form, A B A C: the call is the bass as you play it, B and C answer it, each with its own line and sound.
+
 New in 0.2: the same controls as BREAK SURGEON (REC returns, ENV fills, LFO mutates, SEL + LFO undoes, SEL + white keys queue scenes), SELECT picks the part the keys play, and the screen shows what every key and encoder does, also with SEL or SAVE held.
 
 Version {{VERSION}}. **Not yet tested on a physical FM-1.** It is tested in software: 124 engine checks, audio-regression renders, fm1-base's host simulator and fm1-emu, an instruction-level emulator that runs the real firmware file. Installing it is at your own risk; the installer can put M-VAVE's own firmware back. Back up first.
@@ -12,7 +14,7 @@ Version {{VERSION}}. **Not yet tested on a physical FM-1.** It is tested in soft
 - [Manual](manual/): every page, button and key.
 - [Install](install/): from Chrome or Edge, with the FM-1 connected by USB.
 - [Download {{PKG}}](firmware/{{PKG}}): for the command-line installer, `python3 base/tools/fm1_install.py {{PKG}}`.
-- Earlier versions: [0.3.0](firmware/abyssengine-0.3.0.fwsc), [0.2.0](firmware/abyssengine-0.2.0.fwsc) (the 0.2 screens), [0.1.0-dev](firmware/abyssengine-0.1.0-dev.fwsc) (the first kit and controls).
+- Earlier versions: [0.3.1](firmware/abyssengine-0.3.1.fwsc), [0.3.0](firmware/abyssengine-0.3.0.fwsc), [0.2.0](firmware/abyssengine-0.2.0.fwsc) (the 0.2 screens), [0.1.0-dev](firmware/abyssengine-0.1.0-dev.fwsc) (the first kit and controls).
 - [BREAK SURGEON](../break-surgeon/), the rhythm half, and [JUNGLE OS](../), both together.
 - [Source code on GitHub](https://github.com/RahelPuest/jungle-os-fm1).
 

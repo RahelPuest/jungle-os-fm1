@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.4.0 (2026-11-11): call and response
+
+Still not installed on a physical FM-1.
+
+Abyss Engine
+- **CALL & RESPONSE:** the bass plays a 4-bar form, A B A C, on the 4-bar grid. **SEL + SEQ** turns it on and off.
+  - A is the bass as it is: the pattern's line and the knobs' sound.
+  - B and C answer it, each with its own line (A's, or pattern P1–P4's bass line) and its own sound (A's, or one of
+    the ten sweetspots). Defaults: B is A's line as REESE, C is P2's line as LASER.
+  - The SEQUENCE page shows the form with the bar playing lit; K1–K4 set B LINE, B SOUND, C LINE, C SOUND.
+  - The settings are saved. The saved settings' format changed: settings saved by 0.3 load as the defaults once
+    (patterns and scenes are kept).
+- Tests: an engine check of the form (A's notes, B's notes and sound, C's line and sound), a render of it
+  (`F_call_response`), and the host tour through every B and C setting with no text cut.
+
+Break Surgeon
+- **GROOVES:** ALGO on the SEQUENCE page loads one of 14 classic drum & bass grooves into the pattern: 2-STEP,
+  DELAYED 2-STEP, STEPPA, EXTENDED STEPPA (2 bars), STOMPA, HALF-TIME, DANCEHALL, FOOTWORK, TRIPLET 2-STEP, ROLLER,
+  JUMP UP, TECHSTEP, DANCEFLOOR, AMEN.
+  - A groove writes KICK, SNARE, GHOST, HATS and the swing, and re-chops the break to it by its slices' classes
+    (kick slices on the kicks, snare slices on the snares, the ride in between).
+  - SEL + LFO undoes it (the whole pattern back).
+  - The common forms of the genre, written on the 16th grid; the names as STRANJAH's tutorials teach them.
+- Tests: every groove's kicks and snares land on the break's kick and snare slices; undo; a render of all 14
+  (`grooves`); the host tour through every groove's name.
+
 ## 0.3.1 (2026-11-10): an Amen to start with
 
 Still not installed on a physical FM-1.

@@ -7,6 +7,8 @@ JUNGLE OS is two custom firmwares for two M-VAVE FM-1s that together make a hard
 
 Version {{VERSION}}. **Neither firmware has been tested on a physical FM-1 yet.** Both are tested in software: 124 engine checks, audio-regression renders, fm1-base's host simulator, and fm1-emu, an instruction-level emulator that runs the real firmware files. The two-FM-1 link is untested. Installing is at your own risk; the installer can put M-VAVE's own firmware back.
 
+**New in 0.4:** BREAK SURGEON has a library of 14 classic drum & bass grooves, the break re-chopped to each. ABYSS ENGINE plays call and response: a 4-bar bass form A B A C, the answers B and C each with their own line and sound (SEL + SEQ).
+
 **New in 0.3.1:** BREAK SURGEON starts with the Amen pattern, synthesized from its own drums (the pattern, not the copyrighted recording).
 
 **New in 0.3:** both firmwares look like drum & bass. Black screens, acid lime for BREAK SURGEON and abyss cyan for ABYSS ENGINE, hazard stripes, big values. Texts always fit their boxes.

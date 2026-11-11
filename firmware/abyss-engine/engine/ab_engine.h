@@ -22,6 +22,15 @@ extern const char *const ab_track_name[AB_NTRACKS];
 enum { AB_LK_MORPH, AB_LK_BITE, AB_LK_MOTION, AB_LK_OCT, AB_NLOCKS }; /* bass-step locks */
 enum { AB_VOICE_FULL, AB_VOICE_NO_PAD, AB_VOICE_BASS_ONLY };         /* voice budget modes (CPU degradation) */
 
+/* (0.4) CALL & RESPONSE: the bass plays a 4-bar form, A B A C (AB_CR_FORM), on the 4-bar grid. A is the bass as it
+ * is (the pattern's line, MORPH / EXPLORE / MUTATE); B and C answer it, each with its own line and sound */
+#define AB_CR_BARS 4
+extern const uint8_t AB_CR_FORM[AB_CR_BARS];      /* {0, 1, 0, 2}: A B A C */
+typedef struct {
+    int8_t line;   /* the pattern whose bass line plays (0..AB_NPATTERNS-1), -1: A's line */
+    int8_t node;   /* the sweetspot node it sounds as, -1: A's sound */
+} ab_resp_t;
+
 typedef struct {
     uint8_t used, pattern, mute, pad_on;
     float morph, motion, bite, space;
@@ -70,6 +79,9 @@ typedef struct {
     ab_scene_t scene[AB_NSCENES];
     uint8_t fill_on;
     uint32_t fill_end;
+    uint8_t cr_on;                     /* CALL & RESPONSE (written by the main loop, read by the render) */
+    uint8_t cr_play;                   /* the part of the form sounding: 0 A, 1 B, 2 C (the render's) */
+    ab_resp_t cr[2];                   /* B and C */
     float energy;
     /* master */
     jf_neuro_t master;
@@ -121,3 +133,6 @@ void ab_master_update(ab_engine_t *e);
 void ab_scene_store(ab_engine_t *e, int s);
 void ab_default_patterns(ab_engine_t *e);
 const char *ab_node_name(const ab_engine_t *e);  /* the nearest node's name */
+/* CALL & RESPONSE: the part of the form (0 A, 1 B, 2 C) that 16th abs plays */
+int ab_cr_part(const ab_engine_t *e, uint32_t abs);
+void ab_set_cr(ab_engine_t *e, int on);

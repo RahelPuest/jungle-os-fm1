@@ -134,6 +134,13 @@ static void scen_kitsweep(uint32_t b)
     if (b == AT(6.0f)) { BS.bus.m.pressure = 1.0f; BS.bus.m.crush = 0.8f; bs_fx_update(&BS); }
 }
 
+/* (0.4) the groove library, each groove two bars, in the order of bs_groove_name */
+static void scen_grooves(uint32_t b)
+{
+    uint32_t two = AT(2.0f * 4.0f * 60.0f / 174.0f), g = two ? b / two : 0u;
+    if (b == 0) { bs_cmd_bpm(&BS, 174.0f); bs_cmd_play(&BS, 1); }
+    if (two && b % two == 0 && g < BS_NGROOVES) bs_groove(&BS, (int)g);
+}
 /* C: FM growl over the clean sub, stabs over a held pad */
 static void scen_c(uint32_t b)
 {
@@ -154,6 +161,12 @@ static void scen_e(uint32_t b)
     if (b == 0) { ab_cmd_bpm(&AB, 174.0f); ab_cmd_play(&AB, 1); }
     ab_set_morph(&AB, (float)b / (float)AT(16.0f));
 }
+/* F (0.4): CALL & RESPONSE, the bass's form A B A C twice: A the pattern as it is, B its line as REESE, C P2's line
+ * as LASER */
+static void scen_f(uint32_t b)
+{
+    if (b == 0) { ab_cmd_bpm(&AB, 174.0f); ab_set_cr(&AB, 1); ab_cmd_play(&AB, 1); }
+}
 /* pathological settings: every macro at its extremes, resonance and feedback up */
 static void scen_abuse(uint32_t b)
 {
@@ -170,10 +183,12 @@ static const scen_t SC[] = {
     {"B_mutate_undo_scene", 0, 13.0f, scen_b, 0.95f},
     {"perf_modes", 0, 15.0f, scen_perf, 0.95f},
     {"kit_sweep_pressure", 0, 12.0f, scen_kitsweep, 0.95f},
+    {"grooves", 0, 38.5f, scen_grooves, 0.95f},
     {"C_growl_sub_stab_pad", 1, 8.0f, scen_c, 0.95f},
     {"D_kick_ducking", 1, 6.0f, scen_d, 0.95f},
     {"E_morph_fm_nodes", 1, 16.0f, scen_e, 0.95f},
     {"abuse_extremes", 1, 8.0f, scen_abuse, 0.95f},
+    {"F_call_response", 1, 11.3f, scen_f, 0.95f},
 };
 
 int main(int argc, char **argv)

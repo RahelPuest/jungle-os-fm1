@@ -9,7 +9,7 @@
 static ab_engine_t eng PLAT_POOL;
 static int16_t fx_pool[AB_POOL_SAMPLES] PLAT_POOL; /* the delay's lines and the reverb: 96 KiB */
 
-#define SET_MAGIC 0x31534241u /* "ABS1" */
+#define SET_MAGIC 0x32534241u /* "ABS2" (0.4: CALL & RESPONSE) */
 typedef struct {
     float bpm, morph, motion, bite, space, duck_depth;
     jf_neuro_macros_t fx;
@@ -19,6 +19,8 @@ typedef struct {
     int8_t root, octave;
     uint8_t scale, chord, inversion, link_ch, follow_link, voice_mode;
     uint8_t duck_internal, scene_quant, sub_octave, link_usb_host;
+    uint8_t cr_on;
+    int8_t cr_line[2], cr_node[2];   /* CALL & RESPONSE's B and C (ab_resp_t) */
 } settings_t;
 static settings_t set;
 #define PAT_MAGIC 0x31544150u
@@ -105,6 +107,9 @@ static void settings_defaults(void)
     set.scene_quant = JL_Q_BAR;
     set.sub_octave = 1; /* 1: an octave below (-1), 0: unison */
     set.link_usb_host = 0;
+    set.cr_on = 0;
+    set.cr_line[0] = -1, set.cr_node[0] = 8; /* B: A's line as REESE */
+    set.cr_line[1] = 1, set.cr_node[1] = 6;  /* C: P2's line as LASER */
 }
 
 static int load_rec(uint32_t obj, uint32_t magic, void *dst, uint32_t len)
@@ -143,6 +148,8 @@ static void apply_settings(void)
     eng.voice_mode = set.voice_mode;
     eng.duck_internal = set.duck_internal;
     eng.sub.octave = set.sub_octave ? -1 : 0;
+    for (uint32_t i = 0; i < 2u; i++) eng.cr[i].line = set.cr_line[i], eng.cr[i].node = set.cr_node[i];
+    ab_set_cr(&eng, set.cr_on);
 }
 
 static void engine_to_settings(void)
@@ -157,6 +164,8 @@ static void engine_to_settings(void)
     set.tension = eng.tension;
     set.root = eng.root, set.scale = eng.scale, set.chord = eng.chord, set.inversion = eng.inversion;
     set.follow_link = eng.follow_link, set.voice_mode = eng.voice_mode, set.duck_internal = eng.duck_internal;
+    set.cr_on = eng.cr_on;
+    for (uint32_t i = 0; i < 2u; i++) set.cr_line[i] = eng.cr[i].line, set.cr_node[i] = eng.cr[i].node;
 }
 
 static void load_all(void)
@@ -165,7 +174,9 @@ static void load_all(void)
     load_report = 0;
     if (load_rec(OBJ_SETTINGS, SET_MAGIC, &set, sizeof set) || !(set.bpm >= 40.0f && set.bpm <= 300.0f) ||
         set.scale >= JH_NSCALES || set.chord >= JH_NCHORDS || set.stab.model >= JN_STAB_NMODELS || set.voice_mode > 2u ||
-        set.root < 24 || set.root > 60) {
+        set.root < 24 || set.root > 60 || set.cr_line[0] < -1 || set.cr_line[0] >= AB_NPATTERNS ||
+        set.cr_line[1] < -1 || set.cr_line[1] >= AB_NPATTERNS || set.cr_node[0] < -1 || set.cr_node[0] >= (int)eng.fm.nnodes ||
+        set.cr_node[1] < -1 || set.cr_node[1] >= (int)eng.fm.nnodes) {
         settings_defaults();
         load_report |= 1u;
     }
@@ -269,6 +280,12 @@ static void turn_k(int k, int32_t d)
     }
     switch (ui.page) {
     case PG_SEQ:
+        if (eng.cr_on) { /* CALL & RESPONSE: K1 B's line, K2 B's sound, K3 C's line, K4 C's sound */
+            ab_resp_t *r = &eng.cr[k / 2];
+            if (k & 1) r->node = (int8_t)jo_clampi(r->node + (d > 0 ? 1 : -1), -1, (int)eng.fm.nnodes - 1);
+            else r->line = (int8_t)jo_clampi(r->line + (d > 0 ? 1 : -1), -1, AB_NPATTERNS - 1);
+            return;
+        }
         if (k == 0) tr->len = (uint8_t)jo_clampi(tr->len + (d > 0 ? 1 : -1), 1, JS_MAXSTEPS);
         else if (k == 1) eng.pat[eng.cur_pat].swing = (uint8_t)jo_clampi(eng.pat[eng.cur_pat].swing + d, 50, 75);
         else if (k == 2) ui.mutate_radius = jo_clampf(ui.mutate_radius + 0.02f * (float)d, 0.0f, 1.0f);
@@ -327,7 +344,16 @@ static void input(void)
     int32_t d;
     ui_poll(in);
     if (ui_tapped(in, B_HOME)) ui.page = PG_PERFORM, ui.redraw = 1;
-    if (ui_tapped(in, B_SEQ)) ui.page = PG_SEQ, ui.redraw = 1;
+    if (ui_tapped(in, B_SEQ)) {
+        /* (0.4) SEL + SEQ: CALL & RESPONSE on / off (the form on the SEQUENCE page) */
+        if (ui_held(in, B_SEL)) {
+            ui_use(in, B_SEL);
+            ab_set_cr(&eng, !eng.cr_on);
+            dirty = 1;
+            app_say("CALL & RESPONSE", eng.cr_on ? "A B A C ON" : "OFF");
+        }
+        ui.page = PG_SEQ, ui.redraw = 1;
+    }
     if (ui_tapped(in, B_EDIT)) ui.page = PG_SOUND, ui.redraw = 1;
     if (ui_tapped(in, B_FX)) ui.page = PG_FX, ui.redraw = 1;
     if (ui_tapped(in, B_ARP)) ui.page = PG_SCENE, ui.redraw = 1;
@@ -471,6 +497,16 @@ static float pending_frac(void)
     return 1.0f - (float)rem / (float)span;
 }
 
+/* CALL & RESPONSE's names: a response's line ("A" or "P1".."P4") and sound ("A" or the node) */
+static void cr_line_name(char *t, int line)
+{
+    t[0] = 0;
+    if (line < 0) { ui_cat(t, "A"); return; }
+    ui_cat(t, "P");
+    ui_int(t + 1, line + 1);
+}
+static const char *cr_node_name(int node) { return node < 0 ? "A" : eng.fm.node[node].name; }
+
 static void draw_header(void)
 {
     char mid[24] = "", right[28] = "", t[8];
@@ -502,6 +538,7 @@ static void draw_body(void)
         if (eng.mutated) ui_cat(t, "MUTATED (SEL+LFO: UNDO)  ");
         if (eng.explore_node >= 0) ui_cat(t, "EXPLORING");
         if (eng.fill_on) ui_cat(t, "  FILL");
+        if (eng.cr_on) { ui_cat(t, "  C&R "); ui_cat(t, eng.cr_play == 1 ? "B" : eng.cr_play == 2 ? "C" : "A"); }
         ui_fit(6, 28, 234 - (6), &FONT_XS, t, C_GRAY);
         /* the path, nodes as ticks, the morph as a marker */
         for (i = 0; i < eng.fm.npath; i++) {
@@ -548,6 +585,21 @@ static void draw_body(void)
             if (st->flags & JS_SLIDE) ui_cat(t, " SLIDE");
             if (st->flags & JS_ACCENT) ui_cat(t, " ACC");
             ui_fit(6, 96, 234 - (6), &FONT_B, t, C_WHITE);
+        } else if (eng.cr_on) { /* the form: A B A C, the bar playing lit; B's and C's line and sound */
+            static const char *const PARTL[3] = {"A", "B", "C"};
+            int bar = eng.clock.running ? (int)((eng.clock.abs_step >> 4) % AB_CR_BARS) : -1;
+            for (i = 0; i < AB_CR_BARS; i++) {
+                int32_t x = 4 + (int32_t)i * 24;
+                int lit = (int)i == bar;
+                cv_rect(x, 93, 21, 20, lit ? C_HI : C_LINE);
+                ui_fit(x + 5, 95, 14, &FONT_B, PARTL[AB_CR_FORM[i]], lit ? C_BLACK : C_WHITE);
+            }
+            for (i = 0; i < 2u; i++) {
+                t[0] = 0; ui_cat(t, PARTL[i + 1]); ui_cat(t, " ");
+                cr_line_name(v, eng.cr[i].line); ui_cat(t, v); ui_cat(t, " ");
+                ui_cat(t, cr_node_name(eng.cr[i].node));
+                ui_fit(104, 93 + (int32_t)i * 11, 234 - (104), &FONT_T, t, C_GRAY);
+            }
         } else {
             t[0] = 0; ui_cat(t, "PATTERN "); ui_int(v, eng.cur_pat + 1); ui_cat(t, v);
             if (eng.next_pat != eng.cur_pat) { ui_cat(t, " > "); ui_int(v, eng.next_pat + 1); ui_cat(t, v); }
@@ -617,8 +669,8 @@ static void draw_body(void)
     if (ui_held(&ui.in, B_SEL)) {
         cv_rect(0, 82, 240, 33, C_BLACK);
         cv_rect(0, 82, 240, 1, C_HI);
-        ui_fit(4, 86, 234 - (4), &FONT_T, "SEL + PLAY: PANIC    SEL + ENV: FILL 2 BARS", C_WHITE);
-        ui_fit(4, 99, 234 - (4), &FONT_T, "SEL + LFO: UNDO   SEL + REC: PAD HOLD", C_WHITE);
+        ui_fit(4, 86, 234 - (4), &FONT_T, "SEL+PLAY: PANIC  SEL+ENV: FILL 2 BARS", C_WHITE);
+        ui_fit(4, 99, 234 - (4), &FONT_T, "SEL+LFO: UNDO  SEL+REC: PAD  SEL+SEQ: C&R", C_WHITE);
     }
     cv_blit(0, UI_BODY_Y);
 }
@@ -645,7 +697,7 @@ static void draw_strip(void)
             g[n++] = (ui_kg_t)UI_B(0, 2, "TRACKS");
             if (ui.held_step >= 0) g[n++] = (ui_kg_t)UI_B(3, 4, "ACC/SLIDE");
             g[n++] = (ui_kg_t)UI_B(10, 10, "MUTE");
-            enc[0] = "TRACK"; enc[1] = ui.held_step >= 0 ? "OCTAVE" : 0; enc[2] = "PATTERN";
+            enc[0] = "TRACK"; enc[1] = ui.held_step >= 0 ? "OCTAVE" : 0; enc[2] = eng.cr_on ? "A PATT" : "PATTERN";
             break;
         case PG_SCENE:
             g[n++] = (ui_kg_t)UI_W(0, 7, "QUEUE SCENE 1-8");
@@ -683,6 +735,13 @@ static void draw_footer(void)
             v[0] = (float)st->data / 127.0f; v[1] = (float)st->vel / 127.0f; v[2] = m < 0 ? 0.0f : (float)m / 255.0f; v[3] = bi < 0 ? 0.0f : (float)bi / 255.0f;
             vt[2] = m < 0 ? "-" : 0; vt[3] = bi < 0 ? "-" : 0;
             ui_int(b[0], (int32_t)st->data - 64); vt[0] = b[0];
+        } else if (eng.cr_on) {
+            name[0] = "B LINE"; name[1] = "B SOUND"; name[2] = "C LINE"; name[3] = "C SOUND";
+            for (k = 0; k < 4u; k++) {
+                const ab_resp_t *r = &eng.cr[k / 2u];
+                if (k & 1u) { v[k] = (float)(r->node + 1) / (float)eng.fm.nnodes; vt[k] = cr_node_name(r->node); }
+                else { v[k] = (float)(r->line + 1) / (float)AB_NPATTERNS; cr_line_name(b[k], r->line); vt[k] = b[k]; }
+            }
         } else {
             static const char *const DIV[3] = {"1/16", "1/32", "1/8"};
             const js_track_t *tr = &eng.pat[eng.cur_pat].t[ui.track];
