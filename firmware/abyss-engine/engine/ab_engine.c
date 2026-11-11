@@ -3,7 +3,7 @@
 #include "ab_engine.h"
 
 const char *const ab_track_name[AB_NTRACKS] = {"BASS", "STAB", "PAD"};
-enum { C_PLAY, C_BPM, C_NOTE, C_STAB, C_PAD, C_PATTERN, C_SCENE, C_PANIC, C_MUTE, C_FILL, C_RETURN };
+enum { C_PLAY, C_BPM, C_NOTE, C_STAB, C_PAD, C_PATTERN, C_SCENE, C_PANIC, C_MUTE, C_FILL, C_RETURN, C_VAR, C_FILLT };
 
 /* ----------------------------------------------------------- the graph --- */
 static const jg_param_t FMP[JN_NPARAMS] = {
@@ -112,13 +112,59 @@ int ab_revert(ab_engine_t *e)
 
 /* ------------------------------------------------------ call & response --- */
 const uint8_t AB_CR_FORM[AB_CR_BARS] = {0, 1, 0, 2};
+const char *const ab_form_name[AB_NFORMS] = {"OFF", "A B A C", "A A A B", "A B A B", "A B C D", "A A B B"};
+const uint8_t AB_FORMS[AB_NFORMS][AB_CR_BARS] = {{0, 0, 0, 0}, {0, 1, 0, 2}, {0, 0, 0, 1}, {0, 1, 0, 1}, {0, 1, 2, 3}, {0, 0, 1, 1}};
+const char *const ab_fx_name[AB_NFX] = {"NONE", "OCT UP", "OCT DOWN", "FILTER DIVE", "WOBBLE", "STUTTER", "TAPE STOP",
+                                        "BITE MAX", "SUB ONLY"};
+const char *const ab_fill_name[AB_NFILLS] = {"ROLLS", "OCTAVES", "DROP OUT", "SLIDE DOWN"};
 
-int ab_cr_part(const ab_engine_t *e, uint32_t abs) { return e->cr_on ? AB_CR_FORM[(abs >> 4) % AB_CR_BARS] : 0; }
+/* is a fill playing at 16th abs */
+static int fill_at(const ab_engine_t *e, uint32_t abs)
+{
+    return e->fill_on && !js_before(abs, e->fill_start) && js_before(abs, e->fill_end);
+}
+
+/* the variation 16th abs plays: a link fill's answer (FILL ANSWERS: C), the FORM's bar, or the one picked */
+int ab_cr_part(const ab_engine_t *e, uint32_t abs)
+{
+    if (e->answer_on && !js_before(abs, e->answer_start) && js_before(abs, e->answer_end)) return 2;
+    if (e->form != AB_FORM_OFF) return AB_FORMS[e->form % AB_NFORMS][(abs >> 4) % AB_CR_BARS];
+    return e->var_sel % AB_NVAR;
+}
+
+void ab_set_form(ab_engine_t *e, int form)
+{
+    e->form = (uint8_t)(form > 0 && form < AB_NFORMS ? form : AB_FORM_OFF);
+    e->cr_on = e->form != AB_FORM_OFF;
+}
 
 void ab_set_cr(ab_engine_t *e, int on)
 {
-    e->cr_on = (uint8_t)(on != 0);
-    if (!on) e->cr_play = 0;
+    ab_set_form(e, on ? AB_FORM_ABAC : AB_FORM_OFF);
+    if (!on) e->cr_play = 0, e->var_sel = 0;
+}
+
+void ab_set_phrase(ab_engine_t *e, int bars)
+{
+    e->phrase = (uint8_t)(bars >= 16 ? 16 : bars >= 8 ? 8 : 4);
+    e->seq.phrase = e->phrase;
+}
+
+void ab_set_perf(ab_engine_t *e, int fx) { e->perf = (uint8_t)(fx > 0 && fx < AB_NFX ? fx : AB_FX_NONE); }
+
+void ab_sound_get(const ab_engine_t *e, ab_sound_state_t *s)
+{
+    uint32_t i;
+    for (i = 0; i < JN_NPARAMS; i++) s->v[i] = e->mutate_v[i];
+    s->explore = e->explore_node;
+    s->mutated = e->mutated;
+}
+void ab_sound_set(ab_engine_t *e, const ab_sound_state_t *s)
+{
+    uint32_t i;
+    for (i = 0; i < JN_NPARAMS; i++) e->mutate_v[i] = s->v[i];
+    e->explore_node = s->explore;
+    e->mutated = s->mutated;
 }
 
 /* the bass track 16th abs plays: the pattern's (A, or a response on A's line), or a response's line */
@@ -134,10 +180,10 @@ static const js_track_t *bass_src(const ab_engine_t *e, uint32_t abs)
 static void patch_update(ab_engine_t *e)
 {
     uint32_t i;
-    float bite = e->bite_lock >= 0.0f ? e->bite_lock : e->bite;
+    float bite = e->perf == AB_FX_BITE ? 1.0f : e->bite_lock >= 0.0f ? e->bite_lock : e->bite;
     float target = e->morph_lock >= 0 ? (float)e->morph_lock * (1.0f / 255.0f) : e->morph;
     e->morph_s += (target - e->morph_s) * (e->morph_lock >= 0 ? 0.5f : 0.15f); /* ~20 ms knob smoothing */
-    int resp = e->cr_on && e->cr_play ? e->cr[e->cr_play - 1u].node : -1;
+    int resp = e->cr_play ? e->cr[(e->cr_play - 1u) % (AB_NVAR - 1u)].node : -1;
     if (resp >= 0 && (uint32_t)resp < e->fm.nnodes) jg_eval_node(&e->fm, (uint32_t)resp, &e->fv);
     else if (e->explore_node >= 0) jg_eval_node(&e->fm, (uint32_t)e->explore_node, &e->fv);
     else jg_eval(&e->fm, e->morph_s, &e->fv);
@@ -153,6 +199,18 @@ static void patch_update(ab_engine_t *e)
     e->patch.p[JN_P_FORMANT] = jo_clampf(e->patch.p[JN_P_FORMANT] + 0.2f * bite, 0.0f, 1.0f);
     e->patch.motion = e->motion;
     e->patch.coupling = 0.3f + 0.7f * e->motion;
+    /* (0.5) GLIDE, and the performance FX that shape the patch */
+    if (e->glide_amt != 0.5f)
+        e->patch.p[JN_P_GLIDE] = jo_clampf(e->patch.p[JN_P_GLIDE] * jo_exp2f(4.0f * (e->glide_amt - 0.5f)), 0.001f, 0.3f);
+    if (e->perf == AB_FX_DIVE) { /* the low-pass falls five octaves over a bar */
+        float bar = js_clock_samples_per_step(&e->clock) * 16.0f, k = jo_minf((float)e->perf_n / bar, 1.0f);
+        e->patch.p[JN_P_CUTOFF] = jo_maxf(e->patch.p[JN_P_CUTOFF] * jo_exp2f(-5.0f * k), 80.0f);
+    }
+    if (e->perf == AB_FX_WOBBLE) {
+        e->patch.motion = 1.0f, e->patch.coupling = 1.0f;
+        e->patch.p[JN_P_LFODIV] = 4.0f; /* 1/8 */
+        e->patch.p[JN_P_LFODEPTH] = 1.0f;
+    }
 }
 
 /* ------------------------------------------------------------ patterns --- */
@@ -310,7 +368,11 @@ static void fire_(ab_engine_t *e, const js_event_t *ev)
             patch_update(e);
         }
         note = (float)(e->root + (int)ev->data - 64) + (oct >= 0 ? 12.0f * (float)(oct - 2) : 0.0f);
-        if (e->fill_on) note += ev->hit ? 12.0f : 0.0f; /* the link's fill: octave jumps on the rolls */
+        if (fill_at(e, ev->abs_step) && e->fill_type == AB_FILL_ROLLS) note += ev->hit ? 12.0f : 0.0f; /* octave jumps on the rolls */
+        if (fill_at(e, ev->abs_step) && e->fill_type == AB_FILL_SLIDE) note = (float)jh_snap(e->root, e->scale, (int)note);
+        if (e->perf == AB_FX_OCT_UP) note += 12.0f;
+        if (e->perf == AB_FX_OCT_DOWN) note -= 12.0f;
+        if (e->perf == AB_FX_TAPE) break; /* the tape has stopped: no new notes */
         bass_on(e, note, vel, (ev->flags & JS_SLIDE) != 0);
         /* the gate: past the next step when it slides (legato), else 3/4 of a step (or of a ratchet hit) */
         e->bass_gate_left = (nx->flags & JS_ON) && (nx->flags & JS_SLIDE) ? (uint32_t)(sps * 1.1f)
@@ -331,12 +393,36 @@ static void fire_(ab_engine_t *e, const js_event_t *ev)
 static int xform(void *ctx, uint32_t t, uint32_t abs, js_step_t *st)
 {
     ab_engine_t *e = (ab_engine_t *)ctx;
-    if (t == AB_T_BASS && e->cr_on) { /* CALL & RESPONSE: a response's bar plays its own line's step */
+    if (t == AB_T_BASS) { /* a variation's bar plays its own line's step */
         const js_track_t *src = bass_src(e, abs);
         if (src != &e->seq.pat->t[AB_T_BASS]) *st = src->s[abs % (src->len ? src->len : 16u)];
+        /* LOCK TO KICK: the link's kicks play the bass (ab_link_kick), the steps only give it notes */
+        if (e->lock_kick && jl_alive(&e->link, e->ms)) return 0;
     }
-    if (t == AB_T_BASS && e->fill_on && (st->flags & JS_ON) && (abs & 15u) >= 8u)
-        st->ratch = (uint8_t)((abs & 15u) >= 12u ? 2 : 1); /* the fill's rolls in the bass */
+    if (t == AB_T_BASS && fill_at(e, abs) && (st->flags & JS_ON)) {
+        switch (e->fill_type) {
+        case AB_FILL_ROLLS: /* the rolls in the bass */
+            if ((abs & 15u) >= 8u) st->ratch = (uint8_t)((abs & 15u) >= 12u ? 2 : 1);
+            break;
+        case AB_FILL_OCTAVES: if ((abs >> 1) & 1u) st->data = (uint8_t)(st->data + 12u); break;
+        case AB_FILL_DROP: return 0;
+        case AB_FILL_SLIDE: st->flags |= JS_SLIDE; st->data = (uint8_t)(st->data - ((abs & 15u) >> 1)); break;
+        default: break;
+        }
+    }
+    if (t == AB_T_BASS && e->perf == AB_FX_STUTTER) { /* the first note under the FX, repeated in 32nds */
+        if (!e->stutter_have && (st->flags & JS_ON)) e->stutter_step = *st, e->stutter_have = 1;
+        if (e->stutter_have) {
+            *st = e->stutter_step;
+            st->flags = (uint8_t)((st->flags | JS_ON) & ~JS_SLIDE);
+            st->ratch = 1;
+        }
+    }
+    if (e->humanize > 0.0f && (st->flags & JS_ON)) { /* HUMANIZE: fixed small offsets per step and bar */
+        uint32_t h = js_hash(e->seq.pat->seed, abs, t, 77u);
+        st->vel = (uint8_t)jo_clampi((int)st->vel + (int)((float)((int)(h & 31u) - 16) * e->humanize * 1.2f), 1, 127);
+        st->micro = (int8_t)jo_clampi((int)st->micro + (int)((float)((int)((h >> 5) & 31u) - 16) * e->humanize), -64, 63);
+    }
     if (t == AB_T_STAB && e->voice_mode == AB_VOICE_BASS_ONLY) return 0;
     return 1;
 }
@@ -344,7 +430,7 @@ static int xform(void *ctx, uint32_t t, uint32_t abs, js_step_t *st)
 static uint32_t next_boundary(const ab_engine_t *e, int quant)
 {
     static const uint32_t Q[5] = {1u, 4u, 16u, 32u, 64u};
-    uint32_t q = Q[quant < 0 || quant > 4 ? 2 : quant];
+    uint32_t q = quant == 5 ? 16u * (e->phrase ? e->phrase : 4u) : Q[quant < 0 || quant > 4 ? 2 : quant]; /* 5: the phrase */
     uint32_t a = e->clock.running ? e->clock.abs_step + 2u : 0u;
     return (a + q - 1u) / q * q;
 }
@@ -377,6 +463,9 @@ static void on_step(void *ctx, uint32_t abs, uint32_t off)
     ab_engine_t *e = (ab_engine_t *)ctx;
     (void)off;
     if (e->fill_on && !js_before(abs, e->fill_end)) e->fill_on = 0;
+    if (e->answer_on && !js_before(abs, e->answer_end)) e->answer_on = 0;
+    e->seq.fill = (uint8_t)fill_at(e, abs + 1u); /* for the next step's trig conditions */
+    if (abs + 1u == e->var_at) e->var_sel = e->var_next, e->var_at = 0xFFFFFFFFu;
     if (abs + 1u == e->pending_at) {
         if (e->scene_pending >= 0) apply_scene(e, &e->scene[e->scene_pending], 1);
         else if (e->next_pat != e->cur_pat) {
@@ -424,11 +513,16 @@ void ab_init(ab_engine_t *e, int16_t *pool)
     e->duck_depth = 0.6f;
     e->cr[0].line = -1, e->cr[0].node = 8;  /* B: A's line as REESE */
     e->cr[1].line = 1, e->cr[1].node = 6;   /* C: P2's line as LASER, the turnaround */
+    e->cr[2].line = 2, e->cr[2].node = 3;   /* D: P3's line as GROWL */
+    e->var_at = 0xFFFFFFFFu;
+    e->glide_amt = 0.5f;
+    e->tape_gain = 1.0f;
     graph_init(e);
     patch_update(e);
     js_clock_init(&e->clock, 174.0f);
     ab_default_patterns(e);
     js_seq_init(&e->seq, &e->pat[0]);
+    ab_set_phrase(e, 4);
     scenes_default(e);
     jf_neuro_init(&e->master);
     if (pool) {
@@ -455,6 +549,8 @@ void ab_cmd_panic(ab_engine_t *e) { cmd(e, C_PANIC, 0, 0, 0, 0.0f); }
 void ab_cmd_mute(ab_engine_t *e, int t) { cmd(e, C_MUTE, (uint8_t)t, 0, 0, 0.0f); }
 void ab_cmd_fill(ab_engine_t *e, int bars) { cmd(e, C_FILL, (uint8_t)bars, 0, 0, 0.0f); }
 void ab_cmd_return(ab_engine_t *e) { cmd(e, C_RETURN, 0, 0, 0, 0.0f); }
+void ab_cmd_variation(ab_engine_t *e, int v) { cmd(e, C_VAR, (uint8_t)(v % AB_NVAR), 0, 0, 0.0f); }
+void ab_cmd_fill_type(ab_engine_t *e, int t, int bars, int at_end) { cmd(e, C_FILLT, (uint8_t)t, (uint8_t)bars, (uint8_t)(at_end != 0), 0.0f); }
 
 static void transport(ab_engine_t *e, int on)
 {
@@ -500,7 +596,7 @@ static void do_cmd(ab_engine_t *e, const jo_cmd_t *c)
         break;
     case C_PATTERN:
         e->next_pat = c->a % AB_NPATTERNS;
-        e->pending_at = next_boundary(e, JL_Q_BAR);
+        e->pending_at = next_boundary(e, e->quant ? 5 : JL_Q_BAR);
         if (!e->clock.running) e->cur_pat = e->next_pat, e->seq.pat = &e->pat[e->cur_pat];
         break;
     case C_SCENE:
@@ -525,7 +621,28 @@ static void do_cmd(ab_engine_t *e, const jo_cmd_t *c)
     case C_MUTE: e->seq.mute ^= (uint8_t)(1u << (c->a % AB_NTRACKS)); break;
     case C_FILL: /* (0.2) a fill by hand, as the link's: the bass's rolls and octave jumps up to the bar after next */
         e->fill_on = 1;
+        e->fill_type = AB_FILL_ROLLS;
+        e->fill_start = e->clock.abs_step;
         e->fill_end = next_boundary(e, JL_Q_BAR) + 16u * (c->a == 2 ? 2u : 1u);
+        break;
+    case C_FILLT: { /* (0.5) a fill of a type: from the next bar, or in the phrase's last bar(s) */
+        uint32_t bars = c->b == 2 ? 2u : 1u, start = next_boundary(e, JL_Q_BAR);
+        if (c->c) {
+            uint32_t ph = 16u * (e->phrase ? e->phrase : 4u), end = next_boundary(e, 5);
+            if (js_before(end - 16u * bars, start)) end += ph; /* too late for this phrase: the next one's */
+            start = end - 16u * bars;
+        }
+        e->fill_on = 1;
+        e->fill_type = c->a % AB_NFILLS;
+        e->fill_start = start;
+        e->fill_end = start + 16u * bars;
+        break;
+    }
+    case C_VAR: /* (0.5) a variation picked: FORM OFF, from the next bar (or the phrase's end) */
+        ab_set_form(e, AB_FORM_OFF);
+        e->var_next = c->a % AB_NVAR;
+        if (!e->clock.running) e->var_sel = e->var_next, e->var_at = 0xFFFFFFFFu;
+        else e->var_at = next_boundary(e, e->quant ? 5 : JL_Q_BAR);
         break;
     case C_RETURN: /* (0.2) back to the base: the mutation and the explore left, the fill ended, MORPH on its node */
         e->fill_on = 0;
@@ -540,6 +657,25 @@ void ab_link_kick(ab_engine_t *e, uint8_t vel)
 {
     e->link_kicks++;
     jf_duck_trigger(&e->duck, (float)vel * (1.0f / 127.0f));
+    /* (0.5) LOCK TO KICK: the kick plays the bass, the note of its line's step now (or the last one before it) */
+    if (e->lock_kick && e->clock.running && e->perf != AB_FX_TAPE) {
+        uint32_t abs = e->clock.abs_step, k;
+        const js_track_t *t = bass_src(e, abs);
+        uint32_t len = t->len ? t->len : 16u, idx = abs % len;
+        int part = ab_cr_part(e, abs);
+        for (k = 0; k < len; k++) {
+            const js_step_t *st = &t->s[(idx + len - k) % len];
+            if (st->flags & JS_ON) {
+                float note = (float)(e->root + (int)st->data - 64);
+                if (part != (int)e->cr_play) { e->cr_play = (uint8_t)part; patch_update(e); }
+                if (e->perf == AB_FX_OCT_UP) note += 12.0f;
+                if (e->perf == AB_FX_OCT_DOWN) note -= 12.0f;
+                bass_on(e, note, 0.5f + 0.5f * (float)vel * (1.0f / 127.0f), 0);
+                e->bass_gate_left = (uint32_t)(js_clock_samples_per_step(&e->clock) * 1.5f);
+                break;
+            }
+        }
+    }
 }
 
 void ab_link_packet(ab_engine_t *e, uint32_t pkt, uint32_t t24)
@@ -571,9 +707,16 @@ void ab_link_packet(ab_engine_t *e, uint32_t pkt, uint32_t t24)
     }
     case JL_EV_FILL_BEGIN:
         e->fill_on = 1;
+        e->fill_type = AB_FILL_ROLLS;
+        e->fill_start = e->clock.abs_step;
         e->fill_end = next_boundary(e, JL_Q_BAR) + 16u * ev.a;
+        if (e->fill_answers) { /* FILL ANSWERS: the fill's bars play variation C */
+            e->answer_on = 1;
+            e->answer_start = next_boundary(e, JL_Q_BAR);
+            e->answer_end = e->fill_end;
+        }
         break;
-    case JL_EV_FILL_END: e->fill_on = 0; break;
+    case JL_EV_FILL_END: e->fill_on = 0; e->answer_on = 0; break;
     case JL_EV_RESET: e->mutated = 0; e->explore_node = -1; e->fill_on = 0; break;
     case JL_EV_ENERGY: e->energy = (float)ev.a * (1.0f / 127.0f); break;
     case JL_EV_ROOT: e->root = (int8_t)(36 + ev.a); break;
@@ -611,6 +754,20 @@ static void render_block(ab_engine_t *e, uint32_t n)
     uint32_t t0, pos = 0, i;
     float trim, send_amt;
     while (jo_cmdq_pop(&e->cmd, &c)) do_cmd(e, &c);
+    if (e->perf != e->perf_was) { /* (0.5) a performance FX begins or ends */
+        if (e->perf_was == AB_FX_TAPE) { e->bass.target = e->tape_bass, e->sub.target = e->tape_sub; e->tape_gain = 1.0f; }
+        e->perf_n = 0;
+        e->stutter_have = 0;
+        if (e->perf == AB_FX_TAPE) e->tape_bass = e->bass.target, e->tape_sub = e->sub.target;
+        e->perf_was = e->perf;
+    }
+    if (e->perf == AB_FX_TAPE) { /* the tape slows: two octaves down and silent over 0.6 s */
+        float k = jo_minf((float)e->perf_n * (1.0f / (0.6f * JO_SR)), 1.0f), f = jo_exp2f(-2.0f * k);
+        e->bass.target = e->tape_bass * f;
+        e->sub.target = e->tape_sub * f;
+        e->tape_gain = 1.0f - k;
+    }
+    if (e->perf) e->perf_n += n;
     patch_update(e);
     jf_duck_set(&e->duck, e->duck_depth, 0.002f, 0.03f, 0.12f);
     h.on_step = on_step;
@@ -633,10 +790,13 @@ static void render_block(ab_engine_t *e, uint32_t n)
     /* the bass's loudness: the node's trim and BITE's compensation */
     trim = jo_db2lin(e->fv.trim_db - 4.0f * (e->bite_lock >= 0.0f ? e->bite_lock : e->bite));
     send_amt = 0.15f + 0.6f * e->space;
+    if (e->perf == AB_FX_SUB_ONLY) trim = 0.0f;
     for (i = 0; i < n; i++) {
         e->b_bass[i] *= trim;
         e->b_send[i] = (e->b_l[i] + e->b_r[i]) * 0.5f * send_amt;
     }
+    if (e->perf == AB_FX_TAPE)
+        for (i = 0; i < n; i++) e->b_bass[i] *= e->tape_gain, e->b_sub[i] *= e->tape_gain;
     if (e->delay.bl) {
         float spb = js_clock_samples_per_step(&e->clock) * 3.0f * JO_INV_SR; /* a dotted 8th */
         jf_delay_set(&e->delay, spb, 0.3f + 0.35f * e->space, 3500.0f);
@@ -672,4 +832,138 @@ void ab_render(ab_engine_t *e, int32_t *lr, uint32_t n, float out_gain)
         done += m;
     }
     e->peak = pk;
+}
+
+/* -------------------------------------------------------------- library --- */
+/* (0.5) bass lines as scale degrees (R: rest; 7 = the octave above; negative: below the root), flags: 'A' accent,
+ * 'S' slide (legato into the note), 'x' plain. The genre's common forms, written for this firmware */
+#define R (-99)
+const char *const ab_line_name[AB_NLINES] = {"ROLLING", "OFFBEAT", "NEURO STABS", "HALF-TIME", "REESE LONG",
+                                             "TWO-STEP", "ACID", "WOBBLE 8THS"};
+static const int8_t LINE_DEG[AB_NLINES][16] = {
+    {0, R, R, 0, R, R, 0, R, 0, R, R, 0, R, R, 4, R},
+    {R, R, 0, R, R, R, 0, R, R, R, 0, R, R, R, 3, R},
+    {0, R, R, 0, R, R, R, R, R, R, 0, 0, R, R, R, R},
+    {0, 0, 0, 0, 0, 0, R, R, R, R, R, R, R, R, -2, -2},
+    {0, 0, 0, 0, 0, 0, 0, 0, -2, -2, -2, -2, -2, -2, -2, -2},
+    {0, R, R, R, R, R, R, R, R, R, 0, R, R, 2, R, R},
+    {0, 0, 7, 0, R, 0, 3, 0, 0, R, 7, 0, 4, 0, R, 3},
+    {0, R, 0, R, 0, R, 0, R, 3, R, 3, R, 3, R, 3, R},
+};
+static const char LINE_FL[AB_NLINES][17] = {
+    "A..x..x.A..x..S.", "..A...x...A...x.", "A..A......AA....", "ASSSSS........AS",
+    "ASSSSSSSASSSSSSS", "A.........A..x..", "A.SA.S.AS.A.S.A.", "A.x.x.x.A.x.x.x.",
+};
+const char *const ab_stab_rhythm_name[AB_NRHYTHMS] = {"OFFBEAT STABS", "2-STEP STABS", "RAVE", "DOTTED", "NONE"};
+const char *const ab_pad_rhythm_name[AB_NRHYTHMS] = {"WHOLE BARS", "I - VI", "FOUR CHORDS", "PULSE", "NONE"};
+
+/* a scale degree (negative: below the root) as semitones from the root */
+static int deg_rel(int root, int scale, int deg)
+{
+    int oct = 0;
+    while (deg < 0) deg += 7, oct--;
+    return jh_degree(root, scale, deg) + 12 * oct - root;
+}
+
+void ab_load_line(ab_engine_t *e, int l)
+{
+    js_track_t t = e->pat[e->cur_pat].t[AB_T_BASS];
+    uint32_t i, k = (uint32_t)l % AB_NLINES;
+    for (i = 0; i < JS_MAXSTEPS; i++) js_step_clear(&t.s[i]), t.s[i].data = 64;
+    t.len = 16;
+    t.div = 0;
+    for (i = 0; i < 16u; i++) {
+        js_step_t *st = &t.s[i];
+        if (LINE_DEG[k][i] == R) continue;
+        st->flags = JS_ON;
+        st->data = (uint8_t)(64 + deg_rel(e->root, e->scale, LINE_DEG[k][i]));
+        st->vel = 100;
+        if (LINE_FL[k][i] == 'S') st->flags |= JS_SLIDE;
+        if (LINE_FL[k][i] == 'A') st->flags |= JS_ACCENT, st->vel = 124;
+    }
+    e->pat[e->cur_pat].t[AB_T_BASS] = t;
+}
+
+void ab_load_rhythm(ab_engine_t *e, int track, int r)
+{
+    static const int8_t STAB[AB_NRHYTHMS][16] = {
+        {R, R, R, R, R, R, 0, R, R, R, R, R, R, R, 5, R}, {0, R, R, R, R, R, R, R, R, R, 0, R, R, R, R, R},
+        {R, R, 0, R, R, R, 0, R, R, R, 5, R, R, R, 4, R}, {0, R, R, 0, R, R, 0, R, R, R, R, R, R, R, R, R},
+        {R, R, R, R, R, R, R, R, R, R, R, R, R, R, R, R}};
+    /* the pad: the chords' degrees at 0 and 16 (two), or at 0 8 16 24 (four) */
+    static const int8_t PADR[AB_NRHYTHMS][4] = {{0, 0, -1, -1}, {0, 5, -1, -1}, {0, 5, 2, 6}, {0, 0, 0, 0}, {-1, -1, -1, -1}};
+    js_track_t t;
+    uint32_t i, k = (uint32_t)r % AB_NRHYTHMS;
+    if (track != AB_T_STAB && track != AB_T_PAD) return;
+    t = e->pat[e->cur_pat].t[track];
+    for (i = 0; i < JS_MAXSTEPS; i++) js_step_clear(&t.s[i]);
+    t.div = 0;
+    if (track == AB_T_STAB) {
+        t.len = 16;
+        for (i = 0; i < 16u; i++)
+            if (STAB[k][i] != R) t.s[i].flags = JS_ON, t.s[i].data = (uint8_t)STAB[k][i];
+    } else if (k == 3) { /* PULSE: the chord on every beat */
+        t.len = 16;
+        for (i = 0; i < 16u; i += 4u) t.s[i].flags = JS_ON, t.s[i].data = 0;
+    } else {
+        t.len = 32;
+        for (i = 0; i < 4u; i++)
+            if (PADR[k][i] >= 0) {
+                uint32_t at = PADR[k][2] >= 0 ? i * 8u : i * 16u;
+                if (at < 32u) t.s[at].flags = JS_ON, t.s[at].data = (uint8_t)PADR[k][i];
+            }
+    }
+    e->pat[e->cur_pat].t[track] = t;
+}
+#undef R
+
+/* the ranking DENSITY adds by (the first first) and removes by (the last first): the downbeat, the beats, the 8ths,
+ * then the offbeat 16ths */
+static const uint8_t DRANK[16] = {0, 8, 5, 9, 2, 10, 6, 11, 1, 12, 4, 13, 3, 14, 7, 15};
+
+int ab_density(ab_engine_t *e, int track, int dir)
+{
+    js_track_t *t = &e->pat[e->cur_pat].t[(uint32_t)track % AB_NTRACKS];
+    uint32_t len = t->len ? t->len : 16u, i, best = 0xFFFFu, pick = 0xFFFFu;
+    for (i = 0; i < len; i++) {
+        uint32_t r = DRANK[i & 15u] * 2u + (i >= 16u), on = (t->s[i].flags & JS_ON) != 0;
+        if (dir > 0 && !on && r < best) best = r, pick = i;
+        if (dir < 0 && on && (pick == 0xFFFFu || r > best)) best = r, pick = i;
+    }
+    if (pick == 0xFFFFu) return 0;
+    if (dir > 0) {
+        js_step_t *st = &t->s[pick];
+        uint32_t k;
+        st->flags = JS_ON;
+        st->vel = 100;
+        st->data = track == AB_T_BASS ? 64u : 0u;
+        for (k = 1; k < len; k++) /* the note of the step before it */
+            if (t->s[(pick + len - k) % len].flags & JS_ON) { st->data = t->s[(pick + len - k) % len].data; break; }
+    } else
+        t->s[pick].flags &= (uint8_t)~JS_ON;
+    return 1;
+}
+
+int ab_record(ab_engine_t *e, int track, int note, float vel)
+{
+    js_track_t *t;
+    js_step_t *st;
+    uint32_t len, idx;
+    if (!e->clock.running || track < 0 || track >= AB_NTRACKS) return -1;
+    t = &e->pat[e->cur_pat].t[track];
+    len = t->len ? t->len : 16u;
+    idx = (e->seq.pos[track] + len - 1u) % len; /* the step nearest now (the sequencer looks half a step ahead) */
+    st = &t->s[idx];
+    st->flags = (uint8_t)((st->flags | JS_ON) & ~JS_SLIDE);
+    st->vel = (uint8_t)jo_clampi((int)(vel * 127.0f + 0.5f), 1, 127);
+    if (track == AB_T_BASS) st->data = (uint8_t)jo_clampi(note - e->root + 64, 40, 100);
+    else { /* the nearest scale degree two octaves over the root */
+        int d, bestd = 0, bestn = 999;
+        for (d = 0; d < 14; d++) {
+            int n = jh_degree(e->root + 24, e->scale, d), dist = n > note ? n - note : note - n;
+            if (dist < bestn) bestn = dist, bestd = d;
+        }
+        st->data = (uint8_t)bestd;
+    }
+    return (int)idx;
 }
