@@ -37,7 +37,8 @@ void jn_bass_note(jn_bass_t *v, float note, float vel, int legato, const jn_patc
         v->freq = v->target;
         v->modenv = 1.0f;
         v->pe = p->p[JN_P_PITCH];
-        v->fatt = 0.0f; /* the foghorn's filter opens again (the oscillators run on: no restart, no click) */
+        v->fatt = 0.0f; /* the horn swells again (the oscillators run on: no restart, no click) */
+        jo_adsr_set(&v->amp, 0.002f, 0.3f, 0.85f, (int)p->p[JN_P_MODEL] == JN_HORN ? 0.3f : 0.06f);
         jo_adsr_gate(&v->amp, 1);
     }
     v->modenv_mul = jo_decay_mul(p->p[JN_P_MODDEC]);
@@ -73,9 +74,8 @@ static float sq_blep(float ph, float dt) { return 0.5f * (jo_saw_blep(ph, dt) - 
 
 void jn_bass_render(jn_bass_t *v, const jn_patch_t *p, float steps_now, float sps_inv, float *out, uint32_t n)
 {
-    /* REESE: the two saws' drift rates (Hz), never in step; HORN: the unison's detune positions */
+    /* REESE: the two saws' drift rates (Hz), never in step */
     static const float RS_RATE[2] = {0.071f, 0.113f};
-    static const float HU_POS[3] = {-1.0f, 0.15f, 1.0f};
     uint32_t i, k;
     int model = jo_clampi((int32_t)p->p[JN_P_MODEL], 0, JN_NMODELS - 1);
     float ratio = p->p[JN_P_RATIO], index = p->p[JN_P_INDEX], fbk = jo_clampf(p->p[JN_P_FEEDBACK], 0.0f, 0.85f);
@@ -104,11 +104,10 @@ void jn_bass_render(jn_bass_t *v, const jn_patch_t *p, float steps_now, float sp
         oct = depth * coup * lfo * 2.5f + wom * 4.0f;
         vmod = depth * coup * lfo * 1.5f + wom * fb01 * 2.5f;
     } else if (model == JN_HORN) {
-        /* the foghorn's filter: opens over ~20 ms on every note (fatt), closes over MODDEC; the unison spread */
-        float cu = 5.0f + 20.0f * fb01;
-        oct = depth * coup * lfo * 2.0f + p->p[JN_P_MODENV] * 4.5f * m0 * v->fatt;
-        v->fatt += (1.0f - v->fatt) * (1.0f - jo_expf(-(float)n * JO_INV_SR * (1.0f / 0.007f)));
-        for (k = 0; k < 3u; k++) rs_mul[k] = 0.5f * jo_exp2f(HU_POS[k] * cu * (1.0f / 1200.0f));
+        /* the foghorn's AD (attack ~100 ms, decay MODDEC) opens the 24 dB low-pass from CUTOFF; the stack's detune */
+        oct = depth * coup * lfo * 1.5f + p->p[JN_P_MODENV] * 5.0f * m0 * v->fatt;
+        v->fatt += (1.0f - v->fatt) * (1.0f - jo_expf(-(float)n * JO_INV_SR * (1.0f / 0.035f)));
+        rs_mul[0] = 0.5f * jo_exp2f(-9.0f / 1200.0f), rs_mul[1] = 0.5f, rs_mul[2] = 0.5f * jo_exp2f(11.0f / 1200.0f);
     } else if (model == JN_REESE) {
         /* two saws +- the detune, each drifting around it at its own slow rate (the beating speeds up and slows
          * down), and a saw an octave below, a touch off */
@@ -189,17 +188,19 @@ void jn_bass_render(jn_bass_t *v, const jn_patch_t *p, float steps_now, float sp
             break;
         }
         case JN_HORN: {
-            /* an octave down: three unison saw-squares, phase-modulated from two octaves above */
-            float pm, acc = 0.0f;
-            v->ph_m = jo_wrap1(v->ph_m + 2.0f * f * JO_INV_SR);
-            pm = jo_sin_turns(v->ph_m) * ix01 * 0.25f;
+            /* an octave down, three stacked squares, each phase-modulated by a sine at RATIO times its pitch (8: three
+             * octaves up, 4: two), INDEX the depth, FDBK the modulator's self-feedback (sharper sidebands) */
+            float acc = 0.0f, pmd = ix01 * 0.5f, fr = jo_clampf(ratio, 1.0f, 8.0f);
             for (k = 0; k < 3u; k++) {
-                float d = f * rs_mul[k] * JO_INV_SR, q;
+                float d = f * rs_mul[k] * JO_INV_SR, m, q;
+                v->drift_ph[k] = jo_wrap1(v->drift_ph[k] + d * fr);
+                m = jo_sin_turns(jo_wrap1(v->drift_ph[k] + fbk * 0.12f * v->fm_y[k]));
+                v->fm_y[k] = m;
                 v->ph_r[k] = jo_wrap1(v->ph_r[k] + d);
-                q = jo_wrap1(jo_wrap1(v->ph_r[k] + pm + 1.0f));
-                acc += 0.75f * jo_saw_blep(q, d) - 0.25f * jo_saw_blep(jo_wrap1(q + 0.5f), d); /* saw + square, halved */
+                q = jo_wrap1(jo_wrap1(v->ph_r[k] + pmd * m + 1.0f));
+                acc += sq_blep(q, d);
             }
-            s = acc * 0.42f;
+            s = acc * 0.45f;
             break;
         }
         case JN_SINE: {
@@ -243,9 +244,9 @@ void jn_bass_render(jn_bass_t *v, const jn_patch_t *p, float steps_now, float sp
             s = jo_lerpf(s, 0.5f * (s + y), phas);
         }
         x = jo_svf(&v->lp, s, g_lp, res).lp;
-        if (model == JN_HORN) { /* 24 dB, then a hard asymmetric first stage before the common one */
-            x = jo_svf(&v->lp2, x, g_lp, 0.1f).lp;
-            x = jo_asym(x * drive * 1.4f, 0.25f) * 1.6f;
+        if (model == JN_HORN) { /* 24 dB, then driven hard (the tutorials: the distortion at its maximum) */
+            x = jo_svf(&v->lp2, x, g_lp, 0.0f).lp;
+            x = jo_asym(x * drive * 1.5f, 0.2f) * 1.3f;
         }
         x = jo_tanh(x * drive * 0.6f) * outc * 0.5f;
         x = jo_dcb(&v->dc, x) * e * (0.4f + 0.6f * v->vel);

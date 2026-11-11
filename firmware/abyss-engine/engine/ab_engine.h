@@ -168,6 +168,7 @@ typedef struct {
     jf_duck_t duck;
     float duck_depth;
     uint8_t duck_internal;             /* standalone: duck on the beat when no link is heard */
+    jo_onepole_t horn_hp; /* (0.7.2) the foghorn's reverb send's high-pass */
     float b_sub[AB_BLOCK_MAX], b_bass[AB_BLOCK_MAX], b_l[AB_BLOCK_MAX], b_r[AB_BLOCK_MAX], b_send[AB_BLOCK_MAX],
         b_duck[AB_BLOCK_MAX];
     /* link (receiver) */

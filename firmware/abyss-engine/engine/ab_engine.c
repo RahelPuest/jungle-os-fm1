@@ -35,7 +35,7 @@ static const node_def_t FMN[] = {
     {"SNARL",      {0, 1.5f, 7.0f, 0.6f, 0.75f, 0.5f, 4000.0f, 0.55f, 6.0f, 0.5f, 0.12f, 6, 0.45f, 0.35f, 0.02f, 0.3f, 0.0f}, -3.6f},
     {"WOMP",       {2, 1.0f, 4.0f, 0.7f, 0.1f, 0.7f, 400.0f,  0.6f, 3.0f, 1.0f, 0.35f, 2, 0.2f, 0.0f, 0.06f, 0.4f, 0.0f}, 2.3f},
     {"WUB",        {2, 1.0f, 9.0f, 0.5f, 0.2f, 0.6f, 500.0f,  0.55f, 3.5f, 0.6f, 0.5f, 4, 0.9f, 0.1f, 0.05f, 0.5f, 0.0f}, 3.9f},
-    {"FOGHORN",    {3, 2.0f, 4.0f, 0.5f, 0.3f, 0.0f, 160.0f,  0.3f, 9.0f, 0.7f, 1.5f, 0, 0.05f, 0.1f, 0.08f, 0.0f, 0.0f}, -5.3f},
+    {"FOGHORN",    {3, 8.0f, 6.0f, 0.3f, 0.3f, 0.0f, 90.0f,   0.2f, 8.0f, 0.75f, 1.7f, 0, 0.05f, 0.0f, 0.08f, 0.0f, 0.0f}, -5.3f},
     {"808",        {4, 1.0f, 4.0f, 0.0f, 0.0f, 0.0f, 2500.0f, 0.0f, 5.0f, 0.0f, 0.5f, 2, 0.0f, 0.0f, 0.1f, 0.0f, 12.0f}, -4.4f},
     {"LASER",      {0, 3.5f, 9.0f, 0.2f, 1.0f, 0.2f, 8000.0f, 0.7f, 2.5f, 0.9f, 0.08f, 7, 0.4f, 0.0f, 0.1f, 0.0f, 24.0f}, -3.7f},
     {"METALLIC",   {0, 2.7f, 6.0f, 0.3f, 0.9f, 0.3f, 6000.0f, 0.6f, 3.0f, 0.6f, 0.08f, 5, 0.3f, 0.1f, 0.01f, 0.4f, 0.0f}, -2.0f},
@@ -1019,6 +1019,11 @@ static void render_block(ab_engine_t *e, uint32_t n)
         jf_delay_set(&e->delay, spb, 0.3f + 0.35f * e->space, 3500.0f);
         e->delay.mix = 0.5f;
         jf_delay_process(&e->delay, e->b_send, e->b_l, e->b_r, n);
+        if ((int)e->patch.p[JN_P_MODEL] == JN_HORN) { /* (0.7.2) the foghorn in its space: the bass into the reverb,
+                                                          above ~250 Hz (the tutorials' reverb, no low mud) */
+            float hs = 0.3f + 0.4f * e->space;
+            for (i = 0; i < n; i++) e->b_send[i] += jo_hp1(&e->horn_hp, e->b_bass[i], 0.035f) * hs;
+        }
         jf_verb_process(&e->verb, e->b_send, e->b_l, e->b_r, n);
     }
     jf_neuro_process(&e->master, e->b_sub, e->b_bass, e->b_l, e->b_r, e->b_duck, n);

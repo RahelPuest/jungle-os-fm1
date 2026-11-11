@@ -9,4 +9,4 @@ D_kick_ducking 9a27594a
 E_morph_fm_nodes 05cfbae5
 abuse_extremes 6f9c7f72
 F_call_response e55a6d7b
-G_bass_styles 36f181ec
+G_bass_styles 685149ff

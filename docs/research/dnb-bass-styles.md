@@ -90,14 +90,20 @@ tutorials (the videos themselves could not be watched or transcribed from here).
   JUMP-UP WOMP, WOBBLE.
 
 ### FOGHORN
-- **Design (0.7.1):** a very low note (Attack Magazine plays F0) of a saw halfway to a square, FM from two octaves
-  up at about 30 %, three noisy unison voices, a 24 dB low-pass at about 200 Hz that opens on every note (23 ms)
-  and closes over seconds, then heavy multiband distortion, the lows cut and a sine sub on its own track: "a huge
-  blaaat that cuts through the mix" ([Attack Magazine](https://attackmagazine.com/?p=99684)). Stranjah's "Top 10
-  Bass Sounds" covers the classic jump-up basses: [video](https://www.youtube.com/watch?v=CqFnOsymyNk).
+- **Design:** an FM sound. Stranjah's patch, as described on KVR: a square FMed by a sine two or three octaves up,
+  voice stacking, an AD envelope and reverb; a 2-op alternative is a modulator an octave up with a little self-feedback
+  (near a square); played C0 to C2 ([KVR thread](https://www.kvraudio.com/forum/viewtopic.php?p=7799139),
+  [page 2](https://www.kvraudio.com/forum/viewtopic.php?t=547451&start=15)). MusicTech's Serum foghorn: osc A PWM
+  wavetable +3 unison voices, FM from osc B (a sine three octaves up) at 50 %, a sub, a 24 dB low-pass at ~70 Hz
+  opened by an envelope (attack 100 ms, decay 1.7 s, sustain 0), distortion at maximum, Hyper, reverb ~50 %
+  ([MusicTech](https://musictech.com/guides/essential-guide/chase-and-status-bass-garage-production-tutorial/)).
+  Attack Magazine's Wavetable version: FM two octaves up at ~30 %, noise unison, a 24 dB low-pass at ~200 Hz opened
+  by an envelope, heavy multiband distortion ([Attack Magazine](https://attackmagazine.com/?p=99684)).
 - **Use:** one long note, then space for the drums; the next one lower.
-- **ABYSS ENGINE:** model HORN (0.7.1: an octave below the note, three unison saw-squares, FM, a 24 dB low-pass
-  from 160 Hz opening to ~1.4 kHz, two drive stages); sound FOGHORN; style FOGHORN.
+- **ABYSS ENGINE:** model HORN (0.7.2: an octave below the note, three stacked squares, each FMed by a sine RATIO
+  times up (8 = three octaves), FDBK the modulator's self-feedback, a 24 dB low-pass from 90 Hz opened by a 100 ms /
+  1.7 s AD, driven hard, sent to the reverb above ~250 Hz); sound FOGHORN; style FOGHORN. 0.7.0's squares-with-a-swell
+  and 0.7.1's darker saw-squares did not sound like one.
 
 ### LIQUID ROLLER
 - **Design:** a warm, lightly saturated mid over the sub ([Soundbridge](https://www.soundbridge.io/liquid-grooves),

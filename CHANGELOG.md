@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.2 (unreleased): the foghorn, FM
+
+Not installed on a physical FM-1; not checked by ear.
+
+- **FOGHORN rebuilt again, as the tutorials make it:** an FM sound. Three stacked squares an octave below the note,
+  each FMed by a sine three octaves up (RATIO; INDEX the depth, FDBK the modulator's self-feedback), a 24 dB
+  low-pass from 90 Hz opened by a 100 ms / 1.7 s AD, hard drive, and the bass in the reverb (above ~250 Hz, the
+  SPACE macro). 0.7.1's version was not a foghorn.
+
 ## 0.7.1 (2026-11-11): a Reese, a hoover and a foghorn that sound like them
 
 Not installed on a physical FM-1; not checked by ear.

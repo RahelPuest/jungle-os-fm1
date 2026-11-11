@@ -14,9 +14,10 @@
  *           FDBK = the drift
  *   WOMP    saw / square with a per-note "wom" (the filter and the vowel open and close on every note) under the
  *           synced LFO: jump-up womps and wubs; INDEX = the square, FDBK = the wom's vowel depth
- *   HORN    the foghorn: an octave down, three noisy unison saw-squares with FM from two octaves up, a 24 dB
- *           low-pass that opens on every note and closes over seconds, then driven hard (the "blaaat"); INDEX =
- *           the FM, FDBK = the unison spread
+ *   HORN    the foghorn (0.7.2, after Stranjah's and MusicTech's patches): an octave down, three stacked squares
+ *           FMed by a sine RATIO times up (8: three octaves), a 24 dB low-pass that an AD (100 ms up, MODDEC down)
+ *           opens, driven hard, and a reverb send (the engine's); INDEX = the FM depth, FDBK = the modulator's
+ *           self-feedback
  *   SINE    a driven sine (808, dub, rollers' clean mid) with a little FM grit (INDEX)
  *   HOOVER  the Alpha Juno hoover: PWM saws on three octaves, the pulse width stirred by a fast LFO, a pitch
  *           envelope that dives from sharp onto the note (PITCH > 0), a deep chorus; INDEX = the top octave, FDBK =
@@ -70,9 +71,9 @@ typedef struct {
     float vel;
     float xfade, prev_out;   /* model-switch crossfade */
     uint8_t last_model;
-    /* (0.7.1) the foghorn's second low-pass stage and its filter attack; the hoover's PWM LFO and chorus */
+    /* (0.7.1) the foghorn's second low-pass stage and its AD's attack; the hoover's PWM LFO and chorus */
     jo_svf_t lp2;
-    float fatt, pwm_ph, ch_ph;
+    float fatt, pwm_ph, ch_ph, fm_y[3];
     uint32_t ch_w;
     float ch_buf[JN_CH_LEN];
 } jn_bass_t;
