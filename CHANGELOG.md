@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.6.0 (2026-11-11): routes, DNA, duet, energy, tape decay
+
+Still not installed on a physical FM-1. The sound at the defaults is unchanged (every render keeps its hash).
+
+Both firmwares
+- **ENERGY (hold HOME):** every step has a level 1–4; ENERGY decides which levels play, so a build-up is one knob
+  over 16 bars. The white keys cycle the levels, K2 records ENERGY's curve over a phrase and plays it back, K3 sets
+  the levels from each hit's role. Grooves and library lines load with levels. The two FM-1s follow each other's
+  ENERGY over JUNGLE LINK (CC 109). Below full it also thins Break Surgeon's room and grit and Abyss's bite and pad.
+- **TAPE DECAY (SONG page):** what REC records fades a little every pass and goes after a few; a step held for
+  half a second is burned in.
+
+Break Surgeon
+- **ROUTES (hold SEQ):** the playhead's path through the steps: FORWARD, REVERSE, PENDULUM, SNAKE, SPIRAL, SWAP,
+  STUTTER, WALK on black 1–8, or a CUSTOM route drawn by pressing the steps in order. On the selected track, the
+  break or all tracks; while held, or latched into the pattern (undoable). The bar is kept, the steps unchanged.
+- **DNA (tap SEQ twice):** a family tree of up to 16 grooves. LFO breeds a child, the white keys play a genome
+  from the next bar, black 1 keeps, 2 kills a branch, 3 crosses two (A's drums, B's chops), 4 starts a new tree;
+  SAVE + white 9–12 stores the playing one as P1–P4.
+- Sends DENSITY (CC 112) once a bar. BREAK-LOCK moved to SYSTEM's ALGO.
+
+Abyss Engine
+- **DUET (hold SEQ):**
+  - ANSWER ME: you play a bar, the machine answers it the next bar, in variation C's sound: ECHO, INVERT, RETRO,
+    DISPLACE, OCT DOWN or SPARSE.
+  - POCKET: the bass moves off Break Surgeon's kicks into the gaps, thinner when the drums are busy (DENSITY).
+  - GESTURE ECHO: your FX and knob moves come back the next phrase at half depth.
+
+Saved patterns (and Abyss's settings) from 0.5 load as defaults once; scenes are kept. The DNA tree and the energy
+curve are not saved. Tests: 541 checks.
+
 ## 0.5.0 (2026-11-11): sequencers first, live tools on held buttons
 
 Still not installed on a physical FM-1. The sound is unchanged (every render keeps its hash).
