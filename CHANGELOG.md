@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.5.0 (2026-11-11): sequencers first, live tools on held buttons
+
+Still not installed on a physical FM-1. The sound is unchanged (every render keeps its hash).
+
+Both firmwares (docs/architecture/control-maps.md, "0.5")
+- **The grid is always there:** the white keys are the selected track's 16 steps on every page (OCT−/OCT+: 17–32),
+  the black keys pick the track, SELECT the track, ALGO the library, PRESET the pattern, K1–K4 the track's sound.
+  A held step shows a popup; with it held the knobs set its values, ALGO its trig condition, PRESET its slice,
+  tune or octave.
+- **HOME** shows the selected track big and every track as a mini row; the header shows the pattern (or the
+  variation), the bar in the phrase and the countdown.
+- **A tap opens a page, a hold is a layer:**
+  - FX: performance FX on the white keys, the bus on the knobs.
+  - ARP (SONG): scenes, patterns, mutes.
+  - ENV (FILL): four fill types; a tap fills the phrase's last bar.
+  - LFO (VARY): variations A–D, FORM (OFF, A B A C, A A A B, A B A B, A B C D, A A B B), DENSITY, HUMANIZE, MUTATE;
+    a tap mutates.
+  - REC: a tap records the keys into the track, quantized; held, it erases steps or tracks.
+  - SAVE: a tap saves; held, it stores scenes.
+  - SEL: + LFO undo, + ENV redo (8 levels, shared/seq/jo_undo.h), + PLAY panic, + REC RETURN, + SELECT tempo.
+- **Trig conditions** on every step: 1:2, 2:2, 1:4 … 4:4, FILL, NO FILL, PHRASE 1ST, PHRASE END, on the global
+  bar grid so both FM-1s agree.
+- **Phrases** of 4, 8 or 16 bars (SONG page); QUANT = PHRASE lands scenes, patterns and variations on the phrase's
+  end.
+- **Autosave** 3 s after STOP when something changed.
+- Saved settings and patterns from 0.4 load as defaults once (new formats); scenes are kept.
+
+Break Surgeon
+- The variations are P1–P4; FILL types ROLL, SNARE BUILD, DROP OUT, CHOP; a new performance FX, TAPE STOP; DENSITY,
+  HUMANIZE, track mutation; record on drums (soft to hard across the keys) and on the break (the keys are slices).
+- The link's fill message now goes out 4 steps before the fill, so Abyss's fill lines up; a scene queued with
+  QUANT = PHRASE goes over the link as 4 BAR.
+
+Abyss Engine
+- The variations are the bass's answers: A as it is, B, C, D each a LINE and a SOUND (0.4's CALL & RESPONSE is
+  FORM A B A C).
+- A library on ALGO: 8 bass lines in the scale (ROLLING, OFFBEAT, NEURO STABS, HALF-TIME, REESE LONG, TWO-STEP,
+  ACID, WOBBLE 8THS) and 5 chord rhythms each for STAB and PAD.
+- Performance FX: OCT UP, OCT DOWN, FILTER DIVE, WOBBLE, STUTTER, TAPE STOP, BITE MAX, SUB ONLY.
+- FILL types ROLLS, OCTAVES, DROP OUT, SLIDE DOWN.
+- Over JUNGLE LINK: LOCK TO KICK (the bass on Break Surgeon's kicks, the notes from its line) and FILL ANSWERS
+  (a fill from Break Surgeon plays answer C).
+- Undo also covers the sound's mutation. HUMANIZE is a playback amount (turn it back to undo it).
+
+Tests: 274 checks (153 in 0.4): trig conditions, the undo stack, and two new suites for the live tools of each
+firmware; both host tours go through every page and every layer with no text cut.
+
 ## 0.4.0 (2026-11-11): call and response
 
 Still not installed on a physical FM-1.

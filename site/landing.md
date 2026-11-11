@@ -2,10 +2,12 @@
 
 JUNGLE OS is two custom firmwares for two M-VAVE FM-1s that together make a hardware drum & bass, jungle and neurofunk live rig. Each works alone. Together they talk JUNGLE LINK over plain MIDI: clock, transport, scenes, fills and kick triggers for ducking.
 
-![BREAK SURGEON's PERFORM page while playing](break-surgeon/img/home.png "BREAK SURGEON")
-![ABYSS ENGINE's PERFORM page: the bass node SNARL](abyss-engine/img/home.png "ABYSS ENGINE")
+![BREAK SURGEON's main page: the selected track big, every track below](break-surgeon/img/home.png "BREAK SURGEON")
+![ABYSS ENGINE's main page: the bass line with its notes](abyss-engine/img/home.png "ABYSS ENGINE")
 
-Version {{VERSION}}. **Neither firmware has been tested on a physical FM-1 yet.** Both are tested in software: 124 engine checks, audio-regression renders, fm1-base's host simulator, and fm1-emu, an instruction-level emulator that runs the real firmware files. The two-FM-1 link is untested. Installing is at your own risk; the installer can put M-VAVE's own firmware back.
+Version {{VERSION}}. **Neither firmware has been tested on a physical FM-1 yet.** Both are tested in software: 274 engine checks, audio-regression renders, fm1-base's host simulator, and fm1-emu, an instruction-level emulator that runs the real firmware files. The two-FM-1 link is untested. Installing is at your own risk; the installer can put M-VAVE's own firmware back.
+
+**New in 0.5:** both are step sequencers first. The white keys are always the steps, the black keys the tracks; the live tools sit on held buttons (FX, SONG, FILL, VARY, REC, STORE) and letting go is always safe. Trig conditions, 4/8/16-bar phrases, variations A–D with a FORM, live recording, undo and redo. ABYSS ENGINE can play on BREAK SURGEON's kicks and answer its fills.
 
 **New in 0.4:** BREAK SURGEON has a library of 14 classic drum & bass grooves, the break re-chopped to each. ABYSS ENGINE plays call and response: a 4-bar bass form A B A C, the answers B and C each with their own line and sound (SEL + SEQ).
 

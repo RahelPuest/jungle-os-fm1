@@ -43,28 +43,37 @@ should correspond (scene 3 = DROP on both).
 
 Both firmwares share their buttons, so a gesture on one does the same on the other:
 
+Since 0.5 both are step sequencers first: the white keys are always the 16 steps of the selected track, the
+black keys pick the track, and the live tools sit on held buttons (let go and you are back).
+
 | | Break Surgeon | Abyss Engine |
 |---|---|---|
+| white / black keys | the steps / track BREAK…IMPACT | the steps / track BASS STAB PAD |
 | PLAY / SEL + PLAY | start, stop / panic | start, stop / panic |
-| REC | RETURN to the clean groove at the next bar | RETURN: SNAP, mutation and fill off |
-| ENV / SEL + ENV | fill 1 / 2 bars | fill 1 / 2 bars (bass rolls) |
-| LFO / SEL + LFO | mutate the break / undo | mutate the bass / undo |
-| SEL + white 1–8 | queue scene 1–8 | queue scene 1–8 |
-| SAVE + white 1–8 | store scene 1–8 | store scene 1–8 |
-| SEL + black | mute track 1–7 | mute BASS, STAB, PAD |
-| PERFORM: ALGO / PRESET | the kit one sweetspot along / SNAP | EXPLORE / SNAP |
-| SEL + SEQ | — | CALL & RESPONSE: the bass in a 4-bar form A B A C |
+| hold FX + white | performance FX while held (ROLL, CHOP, TAPE STOP …) | performance FX while held (OCT UP, FILTER DIVE, WOBBLE …) |
+| hold ARP + white | queue scene 1–8, pattern P1–P4; black: mutes | the same |
+| tap ENV / hold ENV + white | a fill in the phrase's last bar / ROLL, SNARE BUILD, DROP OUT, CHOP now | the same / ROLLS, OCTAVES, DROP OUT, SLIDE DOWN |
+| tap LFO / hold LFO + white | mutate the track / variation A–D, white 9–14 the FORM | mutate the bass / answer A–D, the FORM |
+| REC / hold REC + white | record the keys into the track / erase a step | the same (the keys are notes) |
+| hold SAVE + white | store scene 1–8 | store scene 1–8 |
+| SEL + LFO / SEL + ENV | undo / redo (8 levels) | undo / redo |
+| SEL + REC | RETURN to the scene's state | RETURN |
 
-**Call and response across the rig:** with Abyss's CALL & RESPONSE on, the answers B and C land on bars 2 and 4 of every 4 bars, the same grid Break Surgeon's scenes and fills use. A 1-bar fill on Break Surgeon (ENV) in bar 4 under C makes that bar the turnaround of the phrase.
+**Call and response across the rig:** FORM A B A C on Abyss puts its answers on bars 2 and 4 of every 4, the
+global grid Break Surgeon's phrases, fills and conditions use too. With FILL ANSWERS on (Abyss SONG page), a fill
+on Break Surgeon makes Abyss play its answer C under it; with LOCK TO KICK the bass plays on Break Surgeon's kicks.
+Trig conditions (PHRASE END, 4:4, FILL …) count bars on the same grid on both, so a step set to PHRASE END plays in
+the same bar on both machines.
 
-Each screen shows, at the bottom, what the keys and encoders do right now, and what they do with SEL or SAVE held.
+Each screen shows, at the bottom, what the keys and encoders do right now; a held layer shows its name and its keys.
 
 ## Transitions that work
 
 - **On the bar, every time**: scenes and pattern changes are quantized (SCENE K1); press anywhere in the bar
   before.
 - **Fill into a scene**: FILL first, the scene on the same bar: the fill ends with an IMPACT hit on the downbeat.
-- **Safe exit**: REC (RETURN) on either: A back to the stable groove at the next bar, B onto a curated node.
+- **Safe exit**: SEL + REC (RETURN) on either brings the scene's state back at the next bar; SEL + LFO undoes the
+  last change, SEL + ENV redoes it.
 - **Panic**: SEL + PLAY on either device stops and silences it.
 
 ## Gain staging inside the instruments
