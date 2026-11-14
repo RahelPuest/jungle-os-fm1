@@ -101,3 +101,5 @@ facts and ideas only; no code was copied ([THIRD_PARTY_NOTICES.md](THIRD_PARTY_N
 
 JUNGLE OS is **MPL-2.0** ([LICENSE](LICENSE)). It is not affiliated with M-VAVE; M-VAVE and FM-1 are trademarks of
 their owners. The repository contains no third-party audio: the test break (the Amen *pattern*, synthesized from the firmware's own drum models) is generated.
+
+You can also try Jungle OS in the browser, no flashing needed, in the free community [FM-1 Emulator](https://fm1-emulator.atst.tools/).
